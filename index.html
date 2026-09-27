@@ -160,6 +160,12 @@
         button.print-btn { background: #3B82F6; flex: 0.8; }
         .page-indicator { font-weight: 600; color: #475569; font-size: 0.95em; white-space: nowrap; }
 
+        /* 動態連線綠點動畫 */
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+            70% { box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+        }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
         @media print {
@@ -178,7 +184,7 @@
             .payment-input { border: none !important; background: transparent !important; padding: 0 !important; text-align: right !important;}
             .photo-item { page-break-inside: avoid; }
             .map-container { height: 300px !important; }
-            #upcoming-deadlines-container { display: none !important; }
+            #upcoming-deadlines-container, #global-sync-card { display: none !important; }
         }
     </style>
 </head>
@@ -229,6 +235,16 @@
     const container = document.getElementById('accom-book');
     let saveTimeout;
 
+    // 更新首頁最後同步時間的顯示
+    function updateGlobalSyncTime() {
+        const timeEl = document.getElementById('global-sync-time');
+        if (timeEl) {
+            const now = new Date();
+            const timeString = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
+            timeEl.innerText = `最後同步時間：${timeString}`;
+        }
+    }
+
     // ==========================================
     // 雲端資料庫 Firebase Firestore (負責文字、付款狀態)
     // ==========================================
@@ -237,8 +253,11 @@
             const docRef = doc(db, "Accommodations", `stay_${index}`);
             await setDoc(docRef, { [field]: value }, { merge: true });
             showSaveStatus(index);
+            updateGlobalSyncTime(); // 每次寫入成功後更新首頁時間
         } catch (error) {
             console.error("寫入 Firebase 失敗:", error);
+            const timeEl = document.getElementById('global-sync-time');
+            if (timeEl) timeEl.innerText = "同步失敗，請檢查網路連線";
         }
     }
 
@@ -432,12 +451,26 @@
     async function renderBook() {
         let html = `
             <div class="page active" id="page-0">
+                
+                <!-- 🌟 雲端同步狀態卡片 -->
+                <div class="info-card" id="global-sync-card" style="background: #ECFDF5; border: 1px solid #A7F3D0; display: flex; align-items: center; justify-content: space-between; padding: 12px 16px;">
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <div style="background: #10B981; color: white; width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.1em;">
+                            ☁️
+                        </div>
+                        <div>
+                            <div style="font-weight: bold; color: #065F46; font-size: 1.05em;">雲端資料已備份</div>
+                            <div id="global-sync-time" style="font-size: 0.85em; color: #047857; margin-top: 2px;">連線資料庫中...</div>
+                        </div>
+                    </div>
+                    <div style="width: 10px; height: 10px; background: #10B981; border-radius: 50%; box-shadow: 0 0 8px #10B981; animation: pulse 2s infinite;"></div>
+                </div>
+
                 <h2 class="hotel-name">🗺️ 北歐跨國住宿與路線總覽</h2>
                 <div class="map-container" style="height: 320px;">
                     <iframe src="https://maps.google.com/maps?saddr=Oslo,Norway&daddr=Sørvågen,Norway+to:Ballstad,Norway+to:Tromsø,Norway+to:Rovaniemi,Finland+to:Helsinki,Finland+to:Munich,Germany&output=embed" loading="lazy"></iframe>
                 </div>
 
-                <!-- 動態注入的即將到來期限區塊將放在這裡 -->
                 <div id="upcoming-deadlines-container"></div>
 
                 <div class="info-card">
@@ -448,12 +481,6 @@
                             <span class="info-value-static" style="text-align: left; max-width: 100%;">${s.hotel}</span>
                         </div>
                     `).join('')}
-                </div>
-                <div class="notes-section" style="border-left-color: #10B981; background: #ECFDF5;">
-                    <strong>✅ 系統狀態更新：</strong><br>
-                    • <b>自動期限管理</b>：逾期的住宿項目將自動轉為「已付款」，七天內的期限會警示於首頁。<br>
-                    • <b>雲端資料庫已連線</b>：所有文字與付款資料將自動備份至 Firebase。<br>
-                    • <b>大容量存儲</b>：照片與 PDF 文件將安全存儲於設備本機。
                 </div>
             </div>
         `;
@@ -535,14 +562,13 @@
         
         container.innerHTML = html;
 
-        // 計算期限邏輯準備 (取得當前本地時間 00:00:00)
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         const oneWeekLater = new Date(today);
         oneWeekLater.setDate(today.getDate() + 7);
         let upcomingDeadlines = [];
 
-        // 向 Firebase 請求並掛載資料，同時進行期限判斷
+        // 讀取 Firebase 資料
         for (let index = 0; index < stays.length; index++) {
             let paymentData = { status: "", date: "", amount: "" };
 
@@ -565,13 +591,11 @@
                 console.error("載入 Firebase 資料失敗:", e);
             }
 
-            // 檢查該飯店是否有設定付款/取消期限
             const stay = stays[index];
             if (stay.paymentDeadline) {
                 const [y, m, d] = stay.paymentDeadline.split('-');
                 const deadlineDate = new Date(y, m - 1, d);
 
-                // 判斷 1: 如果「當前日期」已經超過「期限日期」，自動將狀態改為已付款
                 if (today > deadlineDate) {
                     if (paymentData.status !== "已付款") {
                         paymentData.status = "已付款";
@@ -580,11 +604,9 @@
                         document.getElementById(`pay-status-${index}`).value = "已付款";
                         document.getElementById(`pay-date-${index}`).value = paymentData.date;
                         
-                        // 自動將核銷結果同步寫回 Firebase
                         writeToFirebase(index, "payment", paymentData);
                     }
                 } 
-                // 判斷 2: 尚未付款且期限在七天以內，將其推入提醒陣列
                 else if (deadlineDate <= oneWeekLater) {
                     if (paymentData.status !== "已付款") {
                         upcomingDeadlines.push({
@@ -596,12 +618,13 @@
                 }
             }
 
-            // 載入本地照片
             let savedPhotosArr = await getPhotosFromDB(index);
             if (savedPhotosArr.length > 0) window.renderPhotos(index, savedPhotosArr);
         }
 
-        // 若有即將到來的期限，渲染至首頁容器內
+        // 所有 Firebase 資料讀取完畢後，更新首頁時間戳記
+        updateGlobalSyncTime();
+
         const deadlineContainer = document.getElementById('upcoming-deadlines-container');
         if (deadlineContainer && upcomingDeadlines.length > 0) {
             deadlineContainer.innerHTML = `
