@@ -167,7 +167,41 @@
         }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
+        #login-overlay {
+            position: fixed; inset: 0; z-index: 9999; display: none;
+            align-items: center; justify-content: center; padding: 20px;
+            background: linear-gradient(160deg, #1E3A8A, #3B82F6);
+        }
+        .login-box {
+            width: 100%; max-width: 360px; background: #fff; border-radius: 16px;
+            padding: 28px 24px; box-shadow: 0 10px 40px rgba(0,0,0,0.25); box-sizing: border-box;
+        }
+        .login-box h2 { margin: 0 0 6px; color: #0F172A; font-size: 1.3em; text-align: center; }
+        .login-box p.sub { margin: 0 0 20px; color: #64748B; font-size: 0.9em; text-align: center; }
+        .login-box input {
+            width: 100%; box-sizing: border-box; padding: 12px; margin-bottom: 12px;
+            border: 1px solid #CBD5E1; border-radius: 8px; font-size: 16px;
+        }
+        .login-box button.primary {
+            width: 100%; padding: 12px; border: none; border-radius: 8px;
+            background: #3B82F6; color: #fff; font-size: 1em; font-weight: 600; cursor: pointer;
+        }
+        .login-box button.primary:disabled { opacity: .6; }
+        .login-box .link-btn {
+            background: none; border: none; color: #3B82F6; font-size: 0.88em;
+            cursor: pointer; padding: 8px 4px; margin-top: 6px;
+        }
+        #login-msg { min-height: 1.3em; margin: 4px 0 8px; font-size: 0.88em; color: #DC2626; text-align: center; }
+        #login-msg.ok { color: #059669; }
+        #btn-logout {
+            display: none; position: absolute; right: 12px; top: max(14px, env(safe-area-inset-top));
+            background: rgba(255,255,255,0.2); color: #fff; border: 1px solid rgba(255,255,255,0.5);
+            border-radius: 6px; padding: 4px 10px; font-size: 0.7em; cursor: pointer;
+        }
+        .header-title { position: relative; }
+
         @media print {
+            #login-overlay, #btn-logout { display: none !important; }
             body, html { background-color: white !important; height: auto !important; overflow: visible !important; }
             .app-container { max-width: 100% !important; height: auto !important; box-shadow: none !important; }
             .content-scroll { overflow: visible !important; height: auto !important; padding: 0 !important; }
@@ -189,8 +223,23 @@
 </head>
 <body>
 
+<div id="login-overlay">
+    <form class="login-box" onsubmit="doLogin(event)">
+        <h2>🔒 北歐旅遊住宿手冊</h2>
+        <p class="sub">請登入以查看內容</p>
+        <input type="email" id="login-email" placeholder="Email" autocomplete="username" required>
+        <input type="password" id="login-password" placeholder="密碼" autocomplete="current-password" required>
+        <div id="login-msg"></div>
+        <button type="submit" class="primary" id="login-btn">登入</button>
+        <div style="text-align:center;">
+            <button type="button" class="link-btn" onclick="doResetPassword()">忘記密碼？</button>
+            <button type="button" class="link-btn" id="signup-btn" style="display:none;" onclick="doSignup()">註冊新帳號</button>
+        </div>
+    </form>
+</div>
+
 <div class="app-container">
-    <div class="header-title">🏨 我的住宿手冊</div>
+    <div class="header-title">🏨 我的住宿手冊<button id="btn-logout" onclick="doLogout()">登出</button></div>
     <div class="content-scroll" id="accom-book"></div>
     <div class="controls">
         <button class="nav-btn" onclick="prevPage()" id="btn-prev" disabled>上一頁</button>
@@ -203,6 +252,7 @@
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
     import { initializeFirestore, doc, setDoc, getDoc, deleteDoc, collection, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+    import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendEmailVerification, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
 
     const firebaseConfig = {
         apiKey: "AIzaSyC_RV0Qih2UGdF7tvZLRvdeB-bRJnxbQ0o",
@@ -214,6 +264,8 @@
     };
 
     const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const ALLOW_SIGNUP = true; // 使用者可自行註冊；註冊後須點信中連結驗證 Email，且 Email 須在 Firestore 規則的名單內才讀得到資料
     // 手機/行動網路常擋 WebChannel 串流，自動改用 long-polling 才連得上
     const db = initializeFirestore(app, { experimentalAutoDetectLongPolling: true });
 
@@ -727,7 +779,76 @@
         setTimeout(() => { window.print(); }, 100);
     };
 
-    renderBook();
+    // ===== 登入驗證 =====
+    const loginMsg = (t, ok) => { const el = document.getElementById('login-msg'); el.innerText = t; el.className = ok ? 'ok' : ''; };
+    const authErr = (e) => ({
+        'auth/invalid-credential': 'Email 或密碼錯誤',
+        'auth/wrong-password': 'Email 或密碼錯誤',
+        'auth/user-not-found': 'Email 或密碼錯誤',
+        'auth/invalid-email': 'Email 格式不正確',
+        'auth/too-many-requests': '嘗試次數過多，請稍後再試',
+        'auth/network-request-failed': '網路連線失敗',
+        'auth/email-already-in-use': '此 Email 已註冊',
+        'auth/weak-password': '密碼至少需要 6 個字元',
+        'auth/operation-not-allowed': '尚未在 Firebase 啟用 Email/密碼登入'
+    }[e.code] || `錯誤：${e.code || e.message}`);
+
+    window.doLogin = async function(ev) {
+        ev.preventDefault();
+        const btn = document.getElementById('login-btn');
+        btn.disabled = true; loginMsg('登入中...', true);
+        try {
+            await signInWithEmailAndPassword(auth,
+                document.getElementById('login-email').value.trim(),
+                document.getElementById('login-password').value);
+            loginMsg('');
+        } catch (e) { loginMsg(authErr(e)); }
+        btn.disabled = false;
+    };
+    let signingUp = false;
+    window.doSignup = async function() {
+        const email = document.getElementById('login-email').value.trim();
+        const pw = document.getElementById('login-password').value;
+        if (!email || !pw) return loginMsg('請先輸入 Email 與密碼（密碼至少 6 個字元）');
+        signingUp = true; loginMsg('註冊中...', true);
+        try {
+            const cred = await createUserWithEmailAndPassword(auth, email, pw);
+            await sendEmailVerification(cred.user);
+            await signOut(auth);
+            loginMsg('註冊成功！驗證信已寄出，請點信中連結完成驗證後，再回來登入', true);
+        } catch (e) { loginMsg(authErr(e)); }
+        signingUp = false;
+    };
+    window.doResetPassword = async function() {
+        const email = document.getElementById('login-email').value.trim();
+        if (!email) return loginMsg('請先在上方輸入 Email');
+        try { await sendPasswordResetEmail(auth, email); loginMsg('重設密碼信已寄出，請查看信箱', true); }
+        catch (e) { loginMsg(authErr(e)); }
+    };
+    window.doLogout = async function() { await signOut(auth); };
+
+    document.getElementById('signup-btn').style.display = ALLOW_SIGNUP ? 'inline-block' : 'none';
+
+    let appStarted = false;
+    onAuthStateChanged(auth, (user) => {
+        const overlay = document.getElementById('login-overlay');
+        const logoutBtn = document.getElementById('btn-logout');
+        if (signingUp) return;
+        if (user && !user.emailVerified) {
+            sendEmailVerification(user).catch(() => {});
+            signOut(auth).then(() => loginMsg('此 Email 尚未驗證，已重新寄出驗證信，請點信中連結後再登入'));
+            return;
+        }
+        if (user) {
+            overlay.style.display = 'none';
+            logoutBtn.style.display = 'block';
+            if (!appStarted) { appStarted = true; renderBook(); }
+        } else {
+            if (appStarted) { location.reload(); return; }
+            logoutBtn.style.display = 'none';
+            overlay.style.display = 'flex';
+        }
+    });
 </script>
 </body>
 </html>
