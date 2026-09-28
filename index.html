@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>北歐旅遊全住宿手冊 (Firebase 雲端同步與期限自動管理版)</title>
+    <title>北歐旅遊全住宿手冊 (Firebase 雲端同步版 v2)</title>
     <style>
         html, body {
             margin: 0; padding: 0; width: 100%; height: 100%;
@@ -160,7 +160,6 @@
         button.print-btn { background: #3B82F6; flex: 0.8; }
         .page-indicator { font-weight: 600; color: #475569; font-size: 0.95em; white-space: nowrap; }
 
-        /* 動態連線綠點動畫 */
         @keyframes pulse {
             0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
             70% { box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
@@ -217,9 +216,6 @@
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
 
-    // ==========================================
-    // 住宿資料設定 (加入付款與取消期限)
-    // ==========================================
     const stays = [
         { date: "10/13 - 10/15 (奧斯陸)", hotel: "BJØRVIKA APARTMENTS", address: "Schweigaardsgate 15B, 0191 Oslo", phone: "+47 48 60 53 33", checkIn: "15:00 起", checkOut: "11:00 前", room: "大型雙臥室公寓 & 單臥室公寓", bookingRef: "確認碼: 5767.848.273\nPIN碼: 5289", lat: 59.9139, lon: 10.7522, notes: "入住人數：6位成人。抵達前需支付全額並簽署租賃合約。入住時須支付 NOK 5000 損壞押金。", mapQuery: "Schweigaardsgate+15B,+0191+Oslo", webUrl: "https://www.google.com/search?q=BJØRVIKA+APARTMENTS,+Teaterplassen,+Oslo", paymentDeadline: "2026-09-29", deadlineNote: "入住前 14 天需線上預付，此日前可免費取消" },
         { date: "10/15 - 10/17 (瑟弗根)", hotel: "The Tide - Rorbuer", address: "Besselvågveien 8A, 8392 Sørvågen", phone: "+47 76 09 21 00", checkIn: "16:00 - 23:00", checkOut: "11:00 前", room: "海景高級小屋", bookingRef: "確認碼: 6311.068.839\nPIN碼: 2677", lat: 67.8893, lon: 13.0207, notes: "入住人數：6位成人。小屋位於港邊，距離接待櫃台約700公尺。", mapQuery: "Besselvågveien+8A,+8392+Sørvågen", webUrl: "https://www.google.com/search?q=The+Tide+-+Rorbuer+Sørvågen" },
@@ -235,7 +231,6 @@
     const container = document.getElementById('accom-book');
     let saveTimeout;
 
-    // 更新首頁最後同步時間的顯示
     function updateGlobalSyncTime() {
         const timeEl = document.getElementById('global-sync-time');
         if (timeEl) {
@@ -245,15 +240,12 @@
         }
     }
 
-    // ==========================================
-    // 雲端資料庫 Firebase Firestore (負責文字、付款狀態)
-    // ==========================================
     async function writeToFirebase(index, field, value) {
         try {
             const docRef = doc(db, "Accommodations", `stay_${index}`);
             await setDoc(docRef, { [field]: value }, { merge: true });
             showSaveStatus(index);
-            updateGlobalSyncTime(); // 每次寫入成功後更新首頁時間
+            updateGlobalSyncTime(); 
         } catch (error) {
             console.error("寫入 Firebase 失敗:", error);
             const timeEl = document.getElementById('global-sync-time');
@@ -291,9 +283,6 @@
         }
     }
 
-    // ==========================================
-    // 本機資料庫 IndexedDB (負責照片及PDF)
-    // ==========================================
     const DB_NAME = 'TravelManualDB';
     const STORE_NAME = 'AccomPhotos';
     
@@ -307,20 +296,28 @@
     }
 
     async function savePhotosToDB(index, photosArr) {
-        const db_local = await initDB();
-        const tx = db_local.transaction(STORE_NAME, 'readwrite');
-        tx.objectStore(STORE_NAME).put(photosArr, `photos-${index}`);
-        return new Promise(resolve => tx.oncomplete = resolve);
+        try {
+            const db_local = await initDB();
+            const tx = db_local.transaction(STORE_NAME, 'readwrite');
+            tx.objectStore(STORE_NAME).put(photosArr, `photos-${index}`);
+            return new Promise(resolve => tx.oncomplete = resolve);
+        } catch(e) {
+            console.warn("無法寫入本機照片:", e);
+        }
     }
 
     async function getPhotosFromDB(index) {
-        const db_local = await initDB();
-        const tx = db_local.transaction(STORE_NAME, 'readonly');
-        const request = tx.objectStore(STORE_NAME).get(`photos-${index}`);
-        return new Promise(resolve => {
-            request.onsuccess = () => resolve(request.result || []);
-            request.onerror = () => resolve([]);
-        });
+        try {
+            const db_local = await initDB();
+            const tx = db_local.transaction(STORE_NAME, 'readonly');
+            const request = tx.objectStore(STORE_NAME).get(`photos-${index}`);
+            return new Promise((resolve, reject) => {
+                request.onsuccess = () => resolve(request.result || []);
+                request.onerror = () => reject(request.error);
+            });
+        } catch(e) {
+            throw e; 
+        }
     }
 
     function readFileAsDataURL(file) {
@@ -351,7 +348,8 @@
         const files = event.target.files;
         if (!files || files.length === 0) return;
         
-        let savedPhotos = await getPhotosFromDB(index);
+        let savedPhotos = [];
+        try { savedPhotos = await getPhotosFromDB(index) || []; } catch(e) {}
         
         for (let i = 0; i < files.length; i++) {
             const file = files[i];
@@ -379,7 +377,9 @@
     };
 
     window.renderPhotos = function(index, photos) {
+        if(!photos || !Array.isArray(photos)) return;
         const previewContainer = document.getElementById(`photo-preview-container-${index}`);
+        if(!previewContainer) return;
         previewContainer.innerHTML = ''; 
         photos.forEach((photo, photoIndex) => {
             const itemDiv = document.createElement('div');
@@ -402,16 +402,16 @@
 
     window.removePhoto = async function(index, photoIndex) {
         if(confirm("確定要刪除這份憑證/收據嗎？")) {
-            let savedPhotos = await getPhotosFromDB(index);
-            savedPhotos.splice(photoIndex, 1);
-            await savePhotosToDB(index, savedPhotos);
-            window.renderPhotos(index, savedPhotos);
+            let savedPhotos = [];
+            try { savedPhotos = await getPhotosFromDB(index); } catch(e) {}
+            if(savedPhotos && savedPhotos.length > 0) {
+                savedPhotos.splice(photoIndex, 1);
+                await savePhotosToDB(index, savedPhotos);
+                window.renderPhotos(index, savedPhotos);
+            }
         }
     };
 
-    // ==========================================
-    // 天氣 API 串接 Open-Meteo
-    // ==========================================
     function getWeatherDesc(code) {
         if (code === 0) return "☀️ 晴朗無雲";
         if (code <= 3) return "⛅ 晴時多雲";
@@ -445,14 +445,9 @@
         }
     }
 
-    // ==========================================
-    // 介面渲染與導覽
-    // ==========================================
     async function renderBook() {
         let html = `
             <div class="page active" id="page-0">
-                
-                <!-- 🌟 雲端同步狀態卡片 -->
                 <div class="info-card" id="global-sync-card" style="background: #ECFDF5; border: 1px solid #A7F3D0; display: flex; align-items: center; justify-content: space-between; padding: 12px 16px;">
                     <div style="display: flex; align-items: center; gap: 12px;">
                         <div style="background: #10B981; color: white; width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.1em;">
@@ -568,10 +563,10 @@
         oneWeekLater.setDate(today.getDate() + 7);
         let upcomingDeadlines = [];
 
-        // 讀取 Firebase 資料
         for (let index = 0; index < stays.length; index++) {
             let paymentData = { status: "", date: "", amount: "" };
 
+            // 1. 讀取 Firebase 雲端資料
             try {
                 const docSnap = await getDoc(doc(db, "Accommodations", `stay_${index}`));
                 if (docSnap.exists()) {
@@ -618,11 +613,15 @@
                 }
             }
 
-            let savedPhotosArr = await getPhotosFromDB(index);
-            if (savedPhotosArr.length > 0) window.renderPhotos(index, savedPhotosArr);
+            // 2. 讀取本機相片 (加上 try...catch 防止無痕模式閃退)
+            try {
+                let savedPhotosArr = await getPhotosFromDB(index);
+                if (savedPhotosArr && savedPhotosArr.length > 0) window.renderPhotos(index, savedPhotosArr);
+            } catch (err) {
+                console.warn(`跳過載入住宿 ${index} 的相片，可能受限於瀏覽器安全設定:`, err);
+            }
         }
 
-        // 所有 Firebase 資料讀取完畢後，更新首頁時間戳記
         updateGlobalSyncTime();
 
         const deadlineContainer = document.getElementById('upcoming-deadlines-container');
@@ -678,7 +677,6 @@
         setTimeout(() => { window.print(); }, 100);
     };
 
-    // 初始化渲染
     renderBook();
 </script>
 </body>
