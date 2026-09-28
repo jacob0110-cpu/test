@@ -202,7 +202,7 @@
 
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-    import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+    import { initializeFirestore, doc, setDoc, getDoc, deleteDoc, collection, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
     const firebaseConfig = {
         apiKey: "AIzaSyC_RV0Qih2UGdF7tvZLRvdeB-bRJnxbQ0o",
@@ -214,7 +214,8 @@
     };
 
     const app = initializeApp(firebaseConfig);
-    const db = getFirestore(app);
+    // 手機/行動網路常擋 WebChannel 串流，自動改用 long-polling 才連得上
+    const db = initializeFirestore(app, { experimentalAutoDetectLongPolling: true });
 
     const stays = [
         { date: "10/13 - 10/15 (奧斯陸)", hotel: "BJØRVIKA APARTMENTS", address: "Schweigaardsgate 15B, 0191 Oslo", phone: "+47 48 60 53 33", checkIn: "15:00 起", checkOut: "11:00 前", room: "大型雙臥室公寓 & 單臥室公寓", bookingRef: "確認碼: 5767.848.273\nPIN碼: 5289", lat: 59.9139, lon: 10.7522, notes: "入住人數：6位成人。抵達前需支付全額並簽署租賃合約。入住時須支付 NOK 5000 損壞押金。", mapQuery: "Schweigaardsgate+15B,+0191+Oslo", webUrl: "https://www.google.com/search?q=BJØRVIKA+APARTMENTS,+Teaterplassen,+Oslo", paymentDeadline: "2026-09-29", deadlineNote: "入住前 14 天需線上預付，此日前可免費取消" },
@@ -231,8 +232,12 @@
     const container = document.getElementById('accom-book');
     let saveTimeout;
 
+    let syncError = null;
+    const MAX_DOC_CHARS = 900000; // Firestore 單一文件上限約 1MB
+
     function updateGlobalSyncTime() {
         const timeEl = document.getElementById('global-sync-time');
+        if (timeEl && syncError) { timeEl.innerText = syncError; return; }
         if (timeEl) {
             const now = new Date();
             const timeString = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
@@ -248,22 +253,16 @@
             updateGlobalSyncTime(); 
         } catch (error) {
             console.error("寫入 Firebase 失敗:", error);
-            const timeEl = document.getElementById('global-sync-time');
-            if (timeEl) timeEl.innerText = "同步失敗，請檢查網路連線";
+            syncError = `同步失敗：${error.code || error.message}`;
+            updateGlobalSyncTime();
         }
     }
 
-    function debounce(func, wait) {
-        let timeout;
-        return function(...args) {
-            clearTimeout(timeout);
-            timeout = setTimeout(() => func.apply(this, args), wait);
-        };
-    }
-    const debouncedSaveData = debounce(writeToFirebase, 800);
-
+    const saveTimers = {};
     window.saveData = function(index, field, value) {
-        debouncedSaveData(index, field, value);
+        const key = `${index}-${field}`;
+        clearTimeout(saveTimers[key]);
+        saveTimers[key] = setTimeout(() => writeToFirebase(index, field, value), 800);
     };
 
     window.savePayment = function(index) {
@@ -347,29 +346,31 @@
     window.handlePhotoUpload = async function(event, index) {
         const files = event.target.files;
         if (!files || files.length === 0) return;
-        
-        let savedPhotos = [];
-        try { savedPhotos = await getPhotosFromDB(index) || []; } catch(e) {}
-        
-        for (let i = 0; i < files.length; i++) {
-            const file = files[i];
+        let ok = 0;
+        for (const file of files) {
             try {
                 const dataUrl = await readFileAsDataURL(file);
+                let item;
                 if (file.type === 'application/pdf') {
-                    savedPhotos.push({ type: 'pdf', data: dataUrl });
+                    if (dataUrl.length > MAX_DOC_CHARS) {
+                        alert(`「${file.name}」超過約 0.9MB，無法雲端同步，請改用照片或截圖。`);
+                        continue;
+                    }
+                    item = { type: 'pdf', data: dataUrl };
                 } else {
-                    const compressed = await compressImage(dataUrl);
-                    savedPhotos.push({ type: 'image', data: compressed });
+                    item = { type: 'image', data: await compressImage(dataUrl) };
                 }
-            } catch (err) { alert("檔案處理失敗！"); }
+                item.createdAt = Date.now() + ok;
+                await setDoc(doc(collection(db, "Accommodations", `stay_${index}`, "photos")), item);
+                ok++;
+            } catch (err) {
+                console.error("上傳失敗:", err);
+                alert("檔案上傳失敗：" + (err.code || err.message));
+            }
         }
-        
-        await savePhotosToDB(index, savedPhotos);
-        window.renderPhotos(index, savedPhotos);
-        
         const statusEl = document.getElementById(`save-status-${index}`);
-        if(statusEl) {
-            statusEl.innerText = "✓ 檔案已存入本機";
+        if (statusEl && ok) {
+            statusEl.innerText = `✓ ${ok} 個檔案已上傳雲端`;
             statusEl.style.opacity = 1;
             setTimeout(() => { statusEl.style.opacity = 0; }, 2000);
         }
@@ -377,7 +378,7 @@
     };
 
     window.renderPhotos = function(index, photos) {
-        if(!photos || !Array.isArray(photos)) return;
+        if(!Array.isArray(photos)) return;
         const previewContainer = document.getElementById(`photo-preview-container-${index}`);
         if(!previewContainer) return;
         previewContainer.innerHTML = ''; 
@@ -386,7 +387,7 @@
             itemDiv.className = 'photo-item';
             const btn = document.createElement('button');
             btn.className = 'btn-remove-photo'; btn.innerHTML = '✕';
-            btn.onclick = () => window.removePhoto(index, photoIndex);
+            btn.onclick = () => window.removePhoto(index, photo.id);
             itemDiv.appendChild(btn);
             
             if (photo.type === 'pdf') {
@@ -400,19 +401,73 @@
         });
     };
 
-    window.removePhoto = async function(index, photoIndex) {
-        if(confirm("確定要刪除這份憑證/收據嗎？")) {
-            let savedPhotos = [];
-            try { savedPhotos = await getPhotosFromDB(index); } catch(e) {}
-            if(savedPhotos && savedPhotos.length > 0) {
-                savedPhotos.splice(photoIndex, 1);
-                await savePhotosToDB(index, savedPhotos);
-                window.renderPhotos(index, savedPhotos);
-            }
+    window.removePhoto = async function(index, photoId) {
+        if (!confirm("確定要刪除這份憑證/收據嗎？（所有裝置都會一併刪除）")) return;
+        try {
+            await deleteDoc(doc(db, "Accommodations", `stay_${index}`, "photos", photoId));
+        } catch (e) {
+            alert("刪除失敗：" + (e.code || e.message));
         }
     };
 
-    function getWeatherDesc(code) {
+    // 把舊版存在「本機 IndexedDB」的照片一次性搬到雲端
+    function getDeviceId() {
+        try {
+            let id = localStorage.getItem('deviceId');
+            if (!id) { id = Math.random().toString(36).slice(2, 8); localStorage.setItem('deviceId', id); }
+            return id;
+        } catch (e) { return 'x' + Math.random().toString(36).slice(2, 6); }
+    }
+    async function migrateLocalPhotos() {
+        const dev = getDeviceId();
+        for (let i = 0; i < stays.length; i++) {
+            try {
+                const local = await getPhotosFromDB(i);
+                if (!local || !local.length) continue;
+                let allOk = true;
+                for (let j = 0; j < local.length; j++) {
+                    const p = local[j];
+                    if (!p || !p.data || p.data.length > MAX_DOC_CHARS) { allOk = false; continue; }
+                    await setDoc(doc(db, "Accommodations", `stay_${i}`, "photos", `local_${dev}_${j}`),
+                        { type: p.type, data: p.data, createdAt: j });
+                }
+                if (allOk) await savePhotosToDB(i, []);
+            } catch (e) { console.warn("搬移本機照片失敗:", e); }
+        }
+    }
+
+    // 即時同步：任何裝置改動，其他裝置馬上更新
+    function applyStayData(index, data) {
+        const setVal = (id, v) => {
+            const el = document.getElementById(id);
+            if (el && typeof v === 'string' && document.activeElement !== el && el.value !== v) el.value = v;
+        };
+        setVal(`ref-${index}`, data.ref);
+        setVal(`room-${index}`, data.room);
+        setVal(`note-${index}`, data.note);
+        if (data.payment) {
+            setVal(`pay-status-${index}`, data.payment.status);
+            setVal(`pay-date-${index}`, data.payment.date);
+            setVal(`pay-amount-${index}`, data.payment.amount);
+        }
+    }
+    function startRealtimeSync() {
+        migrateLocalPhotos();
+        const onErr = (e) => { syncError = `同步失敗：${e.code || e.message}`; updateGlobalSyncTime(); };
+        stays.forEach((_, index) => {
+            onSnapshot(doc(db, "Accommodations", `stay_${index}`), snap => {
+                if (snap.exists()) applyStayData(index, snap.data());
+                if (!snap.metadata.fromCache) { syncError = null; updateGlobalSyncTime(); }
+            }, onErr);
+            onSnapshot(collection(db, "Accommodations", `stay_${index}`, "photos"), snap => {
+                const photos = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+                    .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+                window.renderPhotos(index, photos);
+            }, onErr);
+        });
+    }
+
+        function getWeatherDesc(code) {
         if (code === 0) return "☀️ 晴朗無雲";
         if (code <= 3) return "⛅ 晴時多雲";
         if (code === 45 || code === 48) return "🌫 起霧";
@@ -584,6 +639,7 @@
                 }
             } catch(e) {
                 console.error("載入 Firebase 資料失敗:", e);
+                syncError = `讀取雲端失敗：${e.code || e.message}`;
             }
 
             const stay = stays[index];
@@ -613,16 +669,10 @@
                 }
             }
 
-            // 2. 讀取本機相片 (加上 try...catch 防止無痕模式閃退)
-            try {
-                let savedPhotosArr = await getPhotosFromDB(index);
-                if (savedPhotosArr && savedPhotosArr.length > 0) window.renderPhotos(index, savedPhotosArr);
-            } catch (err) {
-                console.warn(`跳過載入住宿 ${index} 的相片，可能受限於瀏覽器安全設定:`, err);
-            }
         }
 
         updateGlobalSyncTime();
+        startRealtimeSync();
 
         const deadlineContainer = document.getElementById('upcoming-deadlines-container');
         if (deadlineContainer && upcomingDeadlines.length > 0) {
