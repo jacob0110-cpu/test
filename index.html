@@ -32,8 +32,10 @@
         .type-badge { display: inline-flex; align-items: center; gap: 6px; background-color: #0D9488; color: white; padding: 8px 16px; border-radius: 20px; font-size: 0.9em; font-weight: 600; margin-bottom: 15px; box-shadow: 0 2px 6px rgba(13, 148, 136, 0.3); }
         .route-title { font-size: 1.4em; color: #0F172A; margin: 0 0 15px 0; line-height: 1.4; display: flex; align-items: center; gap: 10px; }
 
+        /* 首頁儀表板 Widget */
         .dashboard-widget { background: linear-gradient(135deg, #0F766E, #0D9488); color: white; border-radius: 16px; padding: 18px; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(13, 148, 136, 0.3); }
 
+        /* 待辦提醒專區 */
         .todo-section { background: #FEF2F2; border-radius: 16px; padding: 16px; margin-bottom: 20px; border: 1px solid #FEE2E2; border-left: 4px solid #EF4444; box-shadow: 0 2px 10px rgba(0,0,0,0.03); }
         .todo-title { font-weight: 700; color: #991B1B; margin-bottom: 10px; font-size: 1.05em; display: flex; align-items: center; gap: 6px; }
         .todo-item { font-size: 0.9em; color: #7F1D1D; line-height: 1.6; margin-bottom: 8px; border-bottom: 1px dashed #FCA5A5; padding-bottom: 8px; }
@@ -80,11 +82,14 @@
         .photo-item iframe { width: 100%; height: 300px; border: none; display: block; }
         .btn-remove-photo { position: absolute; top: 8px; right: 8px; background: rgba(0,0,0,0.7); color: white; border: none; border-radius: 50%; width: 32px; height: 32px; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; z-index: 10; }
 
-        .controls { flex-shrink: 0; background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); display: flex; justify-content: space-between; align-items: center; padding: 15px 20px; padding-bottom: max(15px, env(safe-area-inset-bottom)); border-top: 1px solid #E2E8F0; z-index: 10; gap: 10px; }
-        button.nav-btn { background: #0F172A; color: white; border: none; padding: 12px 18px; border-radius: 25px; font-weight: 600; font-size: 0.9em; cursor: pointer; flex: 1; text-align: center; }
-        button.nav-btn:disabled { background: #CBD5E1; color: #94A3B8; cursor: not-allowed; }
-        button.print-btn { background: #0D9488; flex: 0.8; }
-        .page-indicator { font-weight: 600; color: #475569; font-size: 0.95em; white-space: nowrap; }
+        /* 全新升級：Day X (日期) 的下拉選單與按鈕設計 */
+        .controls { flex-shrink: 0; background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); display: flex; justify-content: space-between; align-items: center; padding: 12px 15px; padding-bottom: max(12px, env(safe-area-inset-bottom)); border-top: 1px solid #E2E8F0; z-index: 10; gap: 10px; }
+        button.nav-arrow { background: #0F172A; color: white; border: none; width: 44px; height: 44px; border-radius: 12px; font-weight: bold; font-size: 1.2em; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: 0.2s; }
+        button.nav-arrow:active { transform: scale(0.95); }
+        button.nav-arrow:disabled { background: #CBD5E1; color: #94A3B8; cursor: not-allowed; transform: none; }
+        button.print-btn { background: #0D9488; font-size: 1.4em; }
+        .page-selector { flex: 1; height: 44px; border-radius: 12px; border: 2px solid #CBD5E1; background: #F8FAFC url('data:image/svg+xml;utf8,<svg viewBox="0 0 24 24" fill="%230F172A" xmlns="http://www.w3.org/2000/svg"><path d="M7 10l5 5 5-5z"/></svg>') no-repeat right 10px center / 24px; font-weight: 700; font-size: 0.95em; color: #0F172A; padding: 0 35px 0 15px; appearance: none; outline: none; text-overflow: ellipsis; white-space: nowrap; overflow: hidden; cursor: pointer; }
+        .page-selector:focus { border-color: #0D9488; }
 
         /* 個人雲端管理視窗 */
         #sync-modal { display: none; position: absolute; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.6); z-index: 100; justify-content: center; align-items: center; }
@@ -119,11 +124,12 @@
     
     <div class="content-scroll" id="transport-book"></div>
     
+    <!-- 全新底部控制列：加入下拉式行程選單 -->
     <div class="controls">
-        <button class="nav-btn" onclick="prevPage()" id="btn-prev" disabled>上一頁</button>
-        <span class="page-indicator" id="page-text">1</span>
-        <button class="nav-btn print-btn" onclick="handlePrint()">🖨️ 列印</button>
-        <button class="nav-btn" onclick="nextPage()" id="btn-next">下一頁</button>
+        <button class="nav-arrow" onclick="prevPage()" id="btn-prev" disabled>◀</button>
+        <select id="page-select" class="page-selector" onchange="goToPage(parseInt(this.value))"></select>
+        <button class="nav-arrow print-btn" onclick="handlePrint()" title="列印手冊">🖨️</button>
+        <button class="nav-arrow" onclick="nextPage()" id="btn-next">▶</button>
     </div>
 
     <!-- 個人雲端管理視窗 -->
@@ -259,7 +265,6 @@
         }
     });
 
-    // 🌟 加入防連點機制的登入按鈕
     function signInWithGoogle() { 
         const loginBtn = document.getElementById('btn-login');
         loginBtn.disabled = true;
@@ -272,8 +277,6 @@
         }).catch(err => {
             loginBtn.disabled = false;
             loginBtn.innerText = "使用 Google 帳號登入";
-            
-            // 阻擋兩次點擊產生的錯誤，默默忽略不吵使用者
             if (err.code === 'auth/cancelled-popup-request') {
                 console.log("使用者關閉了視窗，或因為連點導致衝突。");
             } else if (err.code === 'auth/popup-blocked') {
@@ -323,13 +326,16 @@
         }
     }
 
+    // 🌟 針對每個行程加入專屬的下拉選單標題 (navTitle)
     const transports = [
         {
+            navTitle: "Day 1 (10/12) | ✈️ 台北 ➔ 慕尼黑",
             date: "10/12 (一) - 10/13 (二)", type: "✈️ 國際航班 (去程)", route: "台北 (TPE) ➔ 慕尼黑 (MUC)",
             carrier: "長榮航空 (EVA Air) BR071", bookingRef: "-", departTime: "23:25", departLoc: "桃園國際機場 (TPE) - T2",
             arriveTime: "07:35 (+1)", arriveLoc: "慕尼黑機場 (MUC) - T2", seats: "-", notes: "飛行總時間約 14h 10m。\n機型/艙等：波音777 商務艙 D"
         },
         {
+            navTitle: "Day 2 (10/13) | ✈️ 慕尼黑 ➔ 奧斯陸",
             date: "10/13 (二)", type: "✈ 歐洲內陸航班", route: "慕尼黑 (MUC) ➔ 奧斯陸 (OSL)",
             carrier: "漢莎航空 (Lufthansa) LH 2456", bookingRef: "9JPE6I",
             departTime: "19:50", departLoc: "慕尼黑機場 (MUC) - T2", arriveTime: "22:05", arriveLoc: "奧斯陸加勒穆恩機場 (OSL)",
@@ -337,6 +343,7 @@
             notes: "機型/艙等：Airbus A320 經濟艙。\n分組票價：685.54 + 685.54 + 342.46 + 343.49 EUR"
         },
         {
+            navTitle: "Day 4 (10/15) | ✈️ 奧斯陸 ➔ 博德",
             date: "10/15 (四)", type: "✈️ 挪威國內航班", route: "奧斯陸 (OSL) ➔ 博德 (BOO)",
             carrier: "北歐航空 (SAS) SK 4106", bookingRef: "-",
             departTime: "11:45", departLoc: "奧斯陸加勒穆恩機場 (OSL)", arriveTime: "13:10", arriveLoc: "博德機場 (BOO)",
@@ -344,36 +351,42 @@
             notes: "機型/艙等：- Standard。\n分組票價：179.00 + 172.26 + 86.13 + 87.81 EUR"
         },
         {
+            navTitle: "Day 4 (10/15) | 🚗 羅弗敦群島取車",
             date: "10/15 (四) - 10/18 (日)", type: "🚗 羅弗敦群島自駕", route: "博德 (BOO) ➔ 斯沃爾韋爾 (SVJ)",
             carrier: "SIXT 租車", bookingRef: "9733067675", departTime: "10/15 14:00 取車", departLoc: "博德機場 (Bodø Airport) SIXT 櫃台",
             arriveTime: "10/18 17:00 還車", arriveLoc: "斯沃爾韋爾 (Svolvær) Roald Amundsensgate 8",
             seats: "Toyota ProAce 8人座", notes: "主駕駛：LAI YAKO。\n方案：All Inclusive Protection (含0自付額車體險與竊盜險)。\n甲地租乙地還 (One-Way)。"
         },
         {
+            navTitle: "Day 4 (10/15) | ⛴️ 跨海渡輪",
             date: "10/15 (四)", type: "⛴️ 跨海渡輪", route: "博德 (Bodø) ➔ 莫斯克內斯 (Moskenes)",
             carrier: "TORGHATTEN", bookingRef: "CFGKELZY", departTime: "16:45", departLoc: "博德渡輪碼頭 (Bodø ferjekai)",
             arriveTime: "20:00", arriveLoc: "莫斯克內斯渡輪碼頭 (Moskenes ferjekai)", seats: "成人票 (含座位預訂)",
             notes: "訂票人：KUEI CHING WANG。\n航線：Bodø-Røst-Værøy-Moskenes。\n⚠️ 提醒：車內所有旅客須在登船前透過線上完成資訊登錄。"
         },
         {
+            navTitle: "Day 7 (10/18) | 🚢 郵輪 (北行)",
             date: "10/18 (日) - 10/19 (一)", type: "🚢 郵輪航程 (北行)", route: "斯沃爾韋爾 (SVJ) ➔ 特羅姆瑟 (TOS)",
             carrier: "MS Havila Polaris", bookingRef: "Res# 433405", departTime: "22:15", departLoc: "斯沃爾韋爾碼頭 (Svolvær)",
             arriveTime: "14:15 (+1)", arriveLoc: "特羅姆瑟碼頭 (Tromsø)", seats: "內側艙房 (Cabin #1, #2, #3)",
             notes: "已付款。共6位成人分配3間艙房(含單人床及上層鋪位、獨立衛浴)。\n包含 10/19 於 Havrand 餐廳的早餐與午餐。"
         },
         {
+            navTitle: "Day 10 (10/21) | ✈️ 特羅姆瑟 ➔ 羅瓦涅米",
             date: "10/21 (三)", type: "✈️ 歐洲內陸航班", route: "特羅姆瑟 (TOS) ➔ 羅瓦涅米 (RVN)",
             carrier: "芬蘭航空 (Finnair) AY 0542", bookingRef: "9KAWJB", departTime: "10:30", departLoc: "特羅姆瑟機場 (TOS)",
             arriveTime: "12:50", arriveLoc: "羅瓦涅米機場 (RVN)", seats: "尚未選位（訂位系統未顯示座位號碼）",
             notes: "機型/艙等：- 經濟艙 N\n分組票價：4,588.00 + 4,616.00 + 2,328.00 + 2,351.00 NOK。\n⚠️ 提醒：尚未選位，記得提早辦理。"
         },
         {
+            navTitle: "Day 11 (10/22) | 🚆 北極特快車",
             date: "10/22 (四) - 10/23 (五)", type: "🚆 芬蘭國鐵 VR (北極特快車)", route: "羅瓦涅米 (RVN) ➔ 赫爾辛基 (HEL)",
             carrier: "VR 火車車次 PYO 266", bookingRef: "TUT-TH5-LEV...", departTime: "17:52", departLoc: "羅瓦涅米火車站",
             arriveTime: "06:27 (+1)", arriveLoc: "赫爾辛基中央車站", seats: "47 車廂上層 (Coach 47, upstairs)\n臥鋪房號：209/210, 211/212, 213/214",
             notes: "訂購房型：完整臥鋪艙房 (Whole cabin)。\nJacob & Jassica (209,210), Sissy & Sugar (211,212), Danny & Fang (213,214)。"
         },
         {
+            navTitle: "Day 15 (10/26) | ✈️ 赫爾辛基 ➔ 慕尼黑",
             date: "10/26 (一)", type: "✈️ 歐洲內陸航班", route: "赫爾辛基 (HEL) ➔ 慕尼黑 (MUC)",
             carrier: "漢莎航空 (Lufthansa) LH 2461", bookingRef: "9JPE6I", departTime: "12:45",
             departLoc: "赫爾辛基萬塔機場 (HEL)", arriveTime: "14:25", arriveLoc: "慕尼黑機場 (MUC) - T2",
@@ -381,6 +394,7 @@
             notes: "機型/艙等：Airbus A321neo 經濟艙。\n票價已含於去程票價中。"
         },
         {
+            navTitle: "Day 16 (10/27) | ✈️ 慕尼黑 ➔ 台北",
             date: "10/27 (二) - 10/28 (三)", type: "✈️ 國際航班 (回程)", route: "慕尼黑 (MUC) ➔ 台北 (TPE)",
             carrier: "長榮航空 (EVA Air) BR072", bookingRef: "-", departTime: "11:30", departLoc: "慕尼黑機場 (MUC) - T2",
             arriveTime: "06:30 (+1)", arriveLoc: "桃園國際機場 (TPE) - T2", seats: "-", notes: "飛行總時間約 12h 00m。\n機型/艙等：波音777 商務艙 D"
@@ -563,7 +577,14 @@
     function renderBook() {
         let html = '';
         let summaryListHTML = '';
+        
+        // 建立下拉選單選項
+        let selectHtml = '<option value="0">🏠 總覽 (首頁)</option>';
+
         transports.forEach(function(t, index) {
+            // 加入選單選項
+            selectHtml += `<option value="${index + 1}">${t.navTitle}</option>`;
+
             let cloudIconStr = allowedCloudIndices.includes(index) ? ' <span style="font-size:0.9em;" title="支援雲端同步">☁️</span>' : '';
             summaryListHTML += '<div style="margin-bottom: 12px; border-bottom: 1px dashed #E2E8F0; padding-bottom: 12px;">';
             summaryListHTML += '<div style="font-size:0.85em; color:#0D9488; font-weight:bold; margin-bottom:4px;">' + t.date + ' | ' + t.type + cloudIconStr + '</div>';
@@ -571,6 +592,9 @@
             summaryListHTML += '<div style="font-size:0.9em; color:#64748B;">' + t.carrier + '</div>';
             summaryListHTML += '</div>';
         });
+
+        // 渲染下拉選單
+        document.getElementById('page-select').innerHTML = selectHtml;
 
         let dashboardWidgetHTML = `
             <div class="dashboard-widget">
@@ -598,7 +622,7 @@
                     <b>10/24 (六)</b> 赫爾辛基 ⇄ 塔林跨國渡輪尚未預訂 — 建議儘速選擇 Tallink Silja、Viking Line 或 Eckerö Line 班次，並預留港口報到與通關時間。
                 </div>
                 <div class="todo-item">
-                    <b>10/21 (三)</b> 芬蘭航空 <b>AY0542</b> (特羅姆瑟 ➔ 羅瓦涅米) 尚未選位，記得提早上網劃位。
+                    <b>10/21 (三)</b> 芬航空 <b>AY0542</b> (特羅姆瑟 ➔ 羅瓦涅米) 尚未選位，記得提早上網劃位。
                 </div>
             </div>
         `;
@@ -606,7 +630,7 @@
         html += '<div class="page active" id="page-0">' +
                 dashboardWidgetHTML +
                 todoSectionHTML +
-                '<h2 class="route-title" style="margin-top: 25px;">🗺️ 北歐跨國交通總覽</h2>' +
+                '<h2 class="route-title" style="margin-top: 25px;">🗺️️ 北歐跨國交通總覽</h2>' +
                 '<div class="info-card">' +
                 '<h3 style="margin-top:0; margin-bottom:15px; color:#1E293B; font-size:1.1em;">🚆 行程明細表</h3>' +
                 summaryListHTML +
@@ -699,7 +723,7 @@
                             <textarea class="editable-field" id="bookRef-${index}" oninput="debouncedSaveData(${index}, 'bookRef', this.value)" placeholder="請輸入訂位代號..."></textarea>
                         </div>
                         <div class="info-row" style="border-bottom: none; padding-bottom: 0;">
-                            <span class="info-label">✏️️ 座位 / 艙房分配</span>
+                            <span class="info-label">✏️ 座位 / 艙房分配</span>
                             <textarea class="editable-field" id="seatAlloc-${index}" oninput="debouncedSaveData(${index}, 'seatAlloc', this.value)" placeholder="請輸入座位資訊..."></textarea>
                         </div>
                     </div>
@@ -751,31 +775,28 @@
         }
     }
 
+    // 🌟 跳轉至指定頁面 (包含選單連動)
+    function goToPage(pageIndex) {
+        document.getElementById(`page-${currentPage}`).classList.remove('active');
+        currentPage = pageIndex;
+        document.getElementById(`page-${currentPage}`).classList.add('active');
+        updateButtons();
+        if (currentPage === 0) initDashboardWidget();
+    }
+
     function updateButtons() {
         document.getElementById('btn-prev').disabled = currentPage === 0;
         document.getElementById('btn-next').disabled = currentPage === totalPages - 1;
-        document.getElementById('page-text').innerText = `${currentPage + 1} / ${totalPages}`;
+        document.getElementById('page-select').value = currentPage; // 同步更新下拉選單
         document.getElementById('transport-book').scrollTop = 0; 
     }
 
     function nextPage() {
-        if (currentPage < totalPages - 1) {
-            document.getElementById(`page-${currentPage}`).classList.remove('active');
-            currentPage++;
-            document.getElementById(`page-${currentPage}`).classList.add('active');
-            updateButtons();
-            if (currentPage === 0) initDashboardWidget();
-        }
+        if (currentPage < totalPages - 1) goToPage(currentPage + 1);
     }
 
     function prevPage() {
-        if (currentPage > 0) {
-            document.getElementById(`page-${currentPage}`).classList.remove('active');
-            currentPage--;
-            document.getElementById(`page-${currentPage}`).classList.add('active');
-            updateButtons();
-            if (currentPage === 0) initDashboardWidget();
-        }
+        if (currentPage > 0) goToPage(currentPage - 1);
     }
 
     let touchStartX = 0; let touchEndX = 0;
