@@ -3,7 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>北歐旅遊全住宿手冊 (Firebase 雲端同步版 v2)</title>
+    <title>北歐旅遊全交通手冊 (免登入備份版)</title>
+    
+    <!-- 載入 Firebase 核心 SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.5.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.5.0/firebase-storage-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.5.0/firebase-auth-compat.js"></script>
+    
     <style>
         html, body {
             margin: 0; padding: 0; width: 100%; height: 100%;
@@ -20,11 +27,21 @@
         }
 
         .header-title {
-            background-color: #3B82F6; padding: 16px;
+            background-color: #0F766E; padding: 16px;
             padding-top: max(16px, env(safe-area-inset-top));
-            text-align: center; font-size: 1.2em; font-weight: 700;
+            display: flex; justify-content: space-between; align-items: center;
             color: #FFFFFF; flex-shrink: 0; z-index: 10;
         }
+        .header-title span { font-size: 1.2em; font-weight: 700; }
+        
+        /* 雲端同步按鈕 */
+        .btn-sync {
+            background: #0D9488; border: 1px solid #2DD4BF; color: white;
+            padding: 6px 12px; border-radius: 20px; font-size: 0.85em; font-weight: 600;
+            cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: flex; align-items: center; gap: 4px;
+        }
+        .btn-sync:active { background: #115E59; }
 
         .content-scroll {
             flex: 1; overflow-y: auto; position: relative;
@@ -35,348 +52,495 @@
 
         .page { display: none; padding: 24px; animation: fadeIn 0.3s ease-in-out; }
         .page.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         
         .type-badge {
             display: inline-flex; align-items: center; gap: 6px;
-            background-color: #2563EB; color: white; padding: 8px 16px;
+            background-color: #0D9488; color: white; padding: 8px 16px;
             border-radius: 20px; font-size: 0.9em; font-weight: 600;
-            margin-bottom: 15px; box-shadow: 0 2px 6px rgba(37, 99, 235, 0.3);
+            margin-bottom: 15px; box-shadow: 0 2px 6px rgba(13, 148, 136, 0.3);
         }
         
-        .hotel-name {
-            font-size: 1.4em; color: #0F172A; margin: 0 0 20px 0;
-            line-height: 1.4; display: flex; align-items: center; gap: 10px;
+        .route-title { font-size: 1.4em; color: #0F172A; margin: 0 0 15px 0; line-height: 1.4; display: flex; align-items: center; gap: 10px; }
+
+        /* 首頁儀表板 Widget */
+        .dashboard-widget {
+            background: linear-gradient(135deg, #0F766E, #0D9488);
+            color: white; border-radius: 16px; padding: 18px; margin-bottom: 20px;
+            box-shadow: 0 4px 15px rgba(13, 148, 136, 0.3);
         }
 
-        .info-card {
-            background: #FFFFFF; border-radius: 16px; padding: 16px;
-            margin-bottom: 16px; border: 1px solid #F1F5F9;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.03);
+        /* 待辦提醒專區 */
+        .todo-section {
+            background: #FEF2F2; border-radius: 16px; padding: 16px; margin-bottom: 20px;
+            border: 1px solid #FEE2E2; border-left: 4px solid #EF4444; box-shadow: 0 2px 10px rgba(0,0,0,0.03);
         }
+        .todo-title { font-weight: 700; color: #991B1B; margin-bottom: 10px; font-size: 1.05em; display: flex; align-items: center; gap: 6px; }
+        .todo-item { font-size: 0.9em; color: #7F1D1D; line-height: 1.6; margin-bottom: 8px; border-bottom: 1px dashed #FCA5A5; padding-bottom: 8px; }
+        .todo-item:last-child { margin-bottom: 0; border-bottom: none; padding-bottom: 0; }
 
-        .info-row {
-            display: flex; justify-content: space-between; margin-bottom: 12px;
-            font-size: 0.95em; border-bottom: 1px solid #F1F5F9; padding-bottom: 12px;
-            flex-direction: column; gap: 6px;
-        }
-        .info-row.horizontal { flex-direction: row; align-items: center; }
+        /* 航班追蹤與載入按鈕 */
+        .track-btn { display: flex; align-items: center; justify-content: center; gap: 8px; background: #EFF6FF; color: #2563EB; padding: 12px; border-radius: 12px; text-decoration: none; font-weight: 600; font-size: 0.9em; border: 1px solid #BFDBFE; transition: all 0.2s; cursor: pointer; }
+        .track-btn:active { background: #DBEAFE; transform: scale(0.98); }
+        .btn-auto-fill { background: #F0FDF4; color: #16A34A; border-color: #BBF7D0; }
+        .btn-auto-fill:active { background: #DCFCE7; }
+        .btn-auto-fill:disabled { opacity: 0.7; cursor: not-allowed; }
+
+        .info-card { background: #FFFFFF; border-radius: 16px; padding: 16px; margin-bottom: 16px; border: 1px solid #F1F5F9; box-shadow: 0 2px 10px rgba(0,0,0,0.03); }
+        .timeline-box { display: flex; flex-direction: column; gap: 15px; position: relative; }
+        .timeline-box::before { content: ''; position: absolute; left: 20px; top: 25px; bottom: 25px; width: 2px; background-color: #E2E8F0; z-index: 1; }
+        .time-point { display: flex; gap: 15px; align-items: flex-start; position: relative; z-index: 2; }
+        .time-icon { width: 40px; height: 40px; border-radius: 50%; background-color: #F0FDFA; color: #0D9488; display: flex; justify-content: center; align-items: center; font-size: 1.2em; flex-shrink: 0; border: 2px solid #FFFFFF; }
+        .time-details { flex: 1; }
+        .time-label { font-size: 0.85em; color: #64748B; margin-bottom: 4px; }
+        .time-value { font-size: 1.2em; font-weight: 700; color: #1E293B; }
+        .location-value { font-size: 0.95em; color: #475569; margin-top: 4px; }
+
+        .info-row { display: flex; justify-content: space-between; margin-bottom: 12px; font-size: 0.95em; border-bottom: 1px solid #F1F5F9; padding-bottom: 12px; flex-direction: column; gap: 6px; }
         .info-row:last-child { margin-bottom: 0; border-bottom: none; padding-bottom: 0; }
         .info-label { color: #64748B; font-weight: 600; display: flex; justify-content: space-between; }
-        .info-value-static { font-weight: 600; color: #1E293B; text-align: right; word-break: break-word; }
+        .info-value-static { font-weight: 600; color: #1E293B; }
         
-        .editable-field {
-            width: 100%; box-sizing: border-box; padding: 10px; border: 1px solid #CBD5E1; 
-            border-radius: 8px; font-size: 0.95em; color: #2563EB; background: #FAFAFA; 
-            font-family: inherit; font-weight: 600; resize: vertical; min-height: 42px;
-            transition: all 0.2s;
-        }
-        .editable-field:focus { outline: none; border-color: #2563EB; background: #FFFFFF; box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.1); }
+        .editable-field { width: 100%; box-sizing: border-box; padding: 10px; border: 1px solid #CBD5E1; border-radius: 8px; font-size: 0.95em; color: #0F766E; background: #FAFAFA; font-family: inherit; font-weight: 600; resize: vertical; min-height: 42px; transition: all 0.2s; }
+        input.editable-field { min-height: 20px; }
+        .editable-field:focus { outline: none; border-color: #0D9488; background: #FFFFFF; box-shadow: 0 0 0 2px rgba(13, 148, 136, 0.1); }
 
-        .payment-section {
-            background: #FFFFFF; border-radius: 16px; padding: 16px; margin-bottom: 16px;
-            border: 1px solid #F1F5F9; box-shadow: 0 2px 10px rgba(0,0,0,0.03);
-        }
-        .payment-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
-        .payment-row:last-child { margin-bottom: 0; }
-        .payment-input {
-            flex: 1; padding: 8px 12px; border: 1px solid #CBD5E1; border-radius: 8px;
-            font-size: 0.95em; color: #1E293B; background: #FAFAFA; text-align: right;
-        }
-        .payment-input:focus { outline: none; border-color: #2563EB; background: #FFF; }
-
-        .climate-section {
-            font-size: 0.95em; color: #1E40AF; line-height: 1.6;
-            background: #EFF6FF; padding: 16px; border-radius: 12px;
-            margin-bottom: 16px; border-left: 4px solid #3B82F6;
-            display: flex; flex-direction: column; gap: 6px;
-        }
-
-        .notes-section {
-            font-size: 0.95em; color: #334155; line-height: 1.6;
-            background: #F1F5F9; padding: 16px; border-radius: 12px; margin-bottom: 16px;
-        }
-
+        .notes-section { font-size: 0.95em; color: #334155; line-height: 1.6; background: #FFFBEB; padding: 16px; border-radius: 12px; margin-bottom: 16px; border-left: 4px solid #F59E0B; }
+        
         .user-input-section { margin-bottom: 16px; position: relative; }
-        .user-input-section textarea {
-            width: 100%; height: 80px; padding: 12px; box-sizing: border-box;
-            border-radius: 12px; border: 2px dashed #94A3B8;
-            background-color: #FFFFFF; font-family: inherit; font-size: 0.95em;
-            color: #1E293B; resize: vertical; transition: border-color 0.2s;
-        }
-        .user-input-section textarea:focus { outline: none; border-color: #2563EB; }
-        
-        .save-status {
-            position: absolute; right: 12px; bottom: 12px; font-size: 0.75em;
-            color: #10B981; opacity: 0; transition: opacity 0.3s; pointer-events: none;
-        }
+        .user-input-section textarea { width: 100%; height: 80px; padding: 12px; box-sizing: border-box; border-radius: 12px; border: 2px dashed #94A3B8; background-color: #FFFFFF; font-family: inherit; font-size: 0.95em; color: #1E293B; resize: vertical; transition: border-color 0.2s; }
+        .user-input-section textarea:focus { outline: none; border-color: #0D9488; }
+        .save-status { position: absolute; right: 12px; bottom: 12px; font-size: 0.75em; color: #10B981; opacity: 0; transition: opacity 0.3s; pointer-events: none; font-weight: bold; }
 
-        .photo-section {
-            background: #FFFFFF; border-radius: 16px; padding: 16px; margin-bottom: 16px;
-            border: 1px solid #F1F5F9; box-shadow: 0 2px 10px rgba(0,0,0,0.03);
-        }
-        .btn-camera {
-            background: #3B82F6; color: white; border: none; padding: 12px; border-radius: 12px;
-            font-weight: 600; font-size: 0.95em; width: 100%; cursor: pointer; display: flex;
-            align-items: center; justify-content: center; gap: 8px; transition: background 0.2s;
-        }
-        .btn-camera:active { background: #2563EB; }
-        
+        .photo-section { background: #FFFFFF; border-radius: 16px; padding: 16px; margin-bottom: 16px; border: 1px solid #F1F5F9; box-shadow: 0 2px 10px rgba(0,0,0,0.03); }
+        .btn-camera { background: #0D9488; color: white; border: none; padding: 12px; border-radius: 12px; font-weight: 600; font-size: 0.95em; width: 100%; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; transition: background 0.2s; }
+        .btn-camera:active { background: #0F766E; }
         .photo-preview-container { display: flex; flex-direction: column; gap: 16px; margin-top: 16px; }
         .photo-item { position: relative; border-radius: 12px; border: 1px solid #E2E8F0; overflow: hidden; background: #FAFAFA; }
         .photo-item img { width: 100%; display: block; }
         .photo-item iframe { width: 100%; height: 300px; border: none; display: block; }
-        .btn-remove-photo {
-            position: absolute; top: 8px; right: 8px; background: rgba(0,0,0,0.7); color: white;
-            border: none; border-radius: 50%; width: 32px; height: 32px; font-size: 16px; cursor: pointer;
-            display: flex; align-items: center; justify-content: center; z-index: 10;
-        }
+        .btn-remove-photo { position: absolute; top: 8px; right: 8px; background: rgba(0,0,0,0.7); color: white; border: none; border-radius: 50%; width: 32px; height: 32px; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; z-index: 10; }
 
-        .map-container {
-            border-radius: 16px; overflow: hidden; height: 220px;
-            background-color: #E2E8F0; position: relative; margin-bottom: 16px;
-        }
-        .map-container iframe { width: 100%; height: 100%; border: none; }
-        
-        .btn-web {
-            display: block; text-align: center; background-color: #EFF6FF;
-            color: #1E40AF; text-decoration: none; padding: 12px;
-            border-radius: 12px; font-weight: 600; font-size: 0.95em;
-            margin-bottom: 16px; border: 1px solid #BFDBFE;
-        }
-
-        .controls {
-            flex-shrink: 0; background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(10px); display: flex; justify-content: space-between;
-            align-items: center; padding: 15px 20px;
-            padding-bottom: max(15px, env(safe-area-inset-bottom));
-            border-top: 1px solid #E2E8F0; z-index: 10; gap: 10px;
-        }
-        button.nav-btn {
-            background: #1E293B; color: white; border: none;
-            padding: 12px 18px; border-radius: 25px; font-weight: 600;
-            font-size: 0.9em; cursor: pointer; flex: 1; text-align: center;
-        }
+        .controls { flex-shrink: 0; background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); display: flex; justify-content: space-between; align-items: center; padding: 15px 20px; padding-bottom: max(15px, env(safe-area-inset-bottom)); border-top: 1px solid #E2E8F0; z-index: 10; gap: 10px; }
+        button.nav-btn { background: #0F172A; color: white; border: none; padding: 12px 18px; border-radius: 25px; font-weight: 600; font-size: 0.9em; cursor: pointer; flex: 1; text-align: center; }
         button.nav-btn:disabled { background: #CBD5E1; color: #94A3B8; cursor: not-allowed; }
-        button.print-btn { background: #3B82F6; flex: 0.8; }
+        button.print-btn { background: #0D9488; flex: 0.8; }
         .page-indicator { font-weight: 600; color: #475569; font-size: 0.95em; white-space: nowrap; }
 
-        @keyframes pulse {
-            0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
-            70% { box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
-        }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-
-        #login-overlay {
-            position: fixed; inset: 0; z-index: 9999; display: none;
-            align-items: center; justify-content: center; padding: 20px;
-            background: linear-gradient(160deg, #1E3A8A, #3B82F6);
-        }
-        .login-box {
-            width: 100%; max-width: 360px; background: #fff; border-radius: 16px;
-            padding: 28px 24px; box-shadow: 0 10px 40px rgba(0,0,0,0.25); box-sizing: border-box;
-        }
-        .login-box h2 { margin: 0 0 6px; color: #0F172A; font-size: 1.3em; text-align: center; }
-        .login-box p.sub { margin: 0 0 20px; color: #64748B; font-size: 0.9em; text-align: center; }
-        .login-box input {
-            width: 100%; box-sizing: border-box; padding: 12px; margin-bottom: 12px;
-            border: 1px solid #CBD5E1; border-radius: 8px; font-size: 16px;
-        }
-        .login-box button.primary {
-            width: 100%; padding: 12px; border: none; border-radius: 8px;
-            background: #3B82F6; color: #fff; font-size: 1em; font-weight: 600; cursor: pointer;
-        }
-        .login-box button.primary:disabled { opacity: .6; }
-        .login-box .link-btn {
-            background: none; border: none; color: #3B82F6; font-size: 0.88em;
-            cursor: pointer; padding: 8px 4px; margin-top: 6px;
-        }
-        #login-msg { min-height: 1.3em; margin: 4px 0 8px; font-size: 0.88em; color: #DC2626; text-align: center; }
-        #login-msg.ok { color: #059669; }
-        #btn-logout {
-            display: none; position: absolute; right: 12px; top: max(14px, env(safe-area-inset-top));
-            background: rgba(255,255,255,0.2); color: #fff; border: 1px solid rgba(255,255,255,0.5);
-            border-radius: 6px; padding: 4px 10px; font-size: 0.7em; cursor: pointer;
-        }
-        .header-title { position: relative; }
+        /* 個人雲端管理視窗 */
+        #sync-modal { display: none; position: absolute; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.6); z-index: 100; justify-content: center; align-items: center; }
+        .sync-box { background: white; padding: 24px; border-radius: 16px; width: 85%; max-width: 320px; text-align: center; }
+        .user-profile { background: #F1F5F9; padding: 12px; border-radius: 12px; margin: 15px 0; font-size: 0.95em; color: #1E293B; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 8px; }
+        .user-profile img { width: 30px; height: 30px; border-radius: 50%; }
+        .sync-btn-group { display: flex; gap: 10px; margin-top: 15px; }
+        .sync-btn-group button { flex: 1; padding: 12px; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; }
+        .btn-upload { background: #0D9488; color: white; }
+        .btn-download { background: #3B82F6; color: white; }
+        .btn-auth { background: #DB4437; color: white; margin-bottom: 15px; width: 100%; }
+        .btn-close { background: #E2E8F0; color: #475569; }
 
         @media print {
-            #login-overlay, #btn-logout { display: none !important; }
             body, html { background-color: white !important; height: auto !important; overflow: visible !important; }
             .app-container { max-width: 100% !important; height: auto !important; box-shadow: none !important; }
             .content-scroll { overflow: visible !important; height: auto !important; padding: 0 !important; }
-            
             .page { display: none !important; animation: none !important; padding: 20px 0 !important; }
             .page.active { display: block !important; page-break-after: avoid; }
-            
             body.print-all .page { display: block !important; page-break-after: always; }
             body.print-all .page:last-child { page-break-after: auto; }
-            
-            .controls, .btn-camera, .btn-remove-photo, .save-status, .btn-web, .weather-loading { display: none !important; }
+            .controls, .btn-camera, .btn-remove-photo, .save-status, .track-btn, .dashboard-widget, .todo-section { display: none !important; }
             .editable-field, .user-input-section textarea { border: 1px solid #000; background: #fff; height: auto; }
-            .payment-input { border: none !important; background: transparent !important; padding: 0 !important; text-align: right !important;}
             .photo-item { page-break-inside: avoid; }
-            .map-container { height: 300px !important; }
-            #upcoming-deadlines-container, #global-sync-card { display: none !important; }
         }
     </style>
 </head>
 <body>
 
-<div id="login-overlay">
-    <form class="login-box" onsubmit="doLogin(event)">
-        <h2>🔒 北歐旅遊住宿手冊</h2>
-        <p class="sub">請登入以查看內容</p>
-        <input type="email" id="login-email" placeholder="Email" autocomplete="username" required>
-        <input type="password" id="login-password" placeholder="密碼" autocomplete="current-password" required>
-        <div id="login-msg"></div>
-        <button type="submit" class="primary" id="login-btn">登入</button>
-        <div style="text-align:center;">
-            <button type="button" class="link-btn" onclick="doResetPassword()">忘記密碼？</button>
-            <button type="button" class="link-btn" id="signup-btn" style="display:none;" onclick="doSignup()">註冊新帳號</button>
-        </div>
-    </form>
-</div>
-
 <div class="app-container">
-    <div class="header-title">🏨 我的住宿手冊<button id="btn-logout" onclick="doLogout()">登出</button></div>
-    <div class="content-scroll" id="accom-book"></div>
+    <div class="header-title">
+        <span>🎫 我的交通行程</span>
+        <button class="btn-sync" onclick="openSyncModal()" id="header-auth-btn">☁️ 備份</button>
+    </div>
+    
+    <div class="content-scroll" id="transport-book"></div>
+    
     <div class="controls">
         <button class="nav-btn" onclick="prevPage()" id="btn-prev" disabled>上一頁</button>
         <span class="page-indicator" id="page-text">1</span>
         <button class="nav-btn print-btn" onclick="handlePrint()">🖨️ 列印</button>
         <button class="nav-btn" onclick="nextPage()" id="btn-next">下一頁</button>
     </div>
+
+    <!-- 個人雲端管理視窗 -->
+    <div id="sync-modal">
+        <div class="sync-box">
+            <h3 style="margin-top:0; color:#0F172A;">☁️ 行程備份（免登入）</h3>
+            <div id="sync-status" style="font-size: 0.85em; color: #10B981; min-height: 20px; margin-bottom: 6px;"></div>
+
+            <div style="font-size:0.85em; color:#64748B; text-align:left; margin-top:8px;">📁 備份檔（全部資料，含照片，可跨手機）</div>
+            <div class="sync-btn-group" style="margin-top:6px;">
+                <button class="btn-upload" onclick="exportBackup()">匯出備份檔</button>
+                <button class="btn-download" onclick="document.getElementById('import-file').click()">匯入備份檔</button>
+            </div>
+            <input type="file" id="import-file" accept="application/json,.json" style="display:none;" onchange="importBackup(event)">
+
+            <div style="font-size:0.85em; color:#64748B; text-align:left; margin-top:16px;">☁️ 雲端（僅 ☁️ 指定行程，同一支手機/瀏覽器）</div>
+            <div class="sync-btn-group" style="margin-top:6px;">
+                <button class="btn-upload" onclick="uploadToCloud()">上傳雲端</button>
+                <button class="btn-download" onclick="downloadFromCloud()">下載雲端</button>
+            </div>
+            <button class="btn-close" style="width: 100%; padding: 12px; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; margin-top: 10px;" onclick="closeSyncModal()">關閉視窗</button>
+        </div>
+    </div>
 </div>
 
-<script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-    import { initializeFirestore, doc, setDoc, getDoc, deleteDoc, collection, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
-    import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendEmailVerification, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
-
+<script>
+    // === Firebase 設定 ===
     const firebaseConfig = {
-        apiKey: "AIzaSyC_RV0Qih2UGdF7tvZLRvdeB-bRJnxbQ0o",
-        authDomain: "aurora-travel-manual.firebaseapp.com",
-        projectId: "aurora-travel-manual",
-        storageBucket: "aurora-travel-manual.firebasestorage.app",
-        messagingSenderId: "1058873996951",
-        appId: "1:1058873996951:web:26ae7eecc016c61217dbd2"
+        apiKey: "AIzaSyAjv8C7cVWi8QrpEFIPeBCCxXmgVRgbbXY",
+        authDomain: "aurora-trans-1ae73.firebaseapp.com",
+        projectId: "aurora-trans-1ae73",
+        storageBucket: "aurora-trans-1ae73.firebasestorage.app",
+        messagingSenderId: "499232245127",
+        appId: "1:499232245127:web:cf450c6eb3cb8ec3e57f22",
+        measurementId: "G-25CC1Y5CHX"
     };
+    
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+    const storage = firebase.storage();
+    const auth = firebase.auth();
 
-    const app = initializeApp(firebaseConfig);
-    const auth = getAuth(app);
-    const ALLOW_SIGNUP = true; // 使用者可自行註冊；註冊後須點信中連結驗證 Email，且 Email 須在 Firestore 規則的名單內才讀得到資料
-    // 手機/行動網路常擋 WebChannel 串流，自動改用 long-polling 才連得上
-    const db = initializeFirestore(app, { experimentalAutoDetectLongPolling: true });
+    let currentUser = null;
 
-    const stays = [
-        { date: "10/13 - 10/15 (奧斯陸)", hotel: "BJØRVIKA APARTMENTS", address: "Schweigaardsgate 15B, 0191 Oslo", phone: "+47 48 60 53 33", checkIn: "15:00 起", checkOut: "11:00 前", room: "大型雙臥室公寓 & 單臥室公寓", bookingRef: "確認碼: 5767.848.273\nPIN碼: 5289", lat: 59.9139, lon: 10.7522, notes: "入住人數：6位成人。抵達前需支付全額並簽署租賃合約。入住時須支付 NOK 5000 損壞押金。", mapQuery: "Schweigaardsgate+15B,+0191+Oslo", webUrl: "https://www.google.com/search?q=BJØRVIKA+APARTMENTS,+Teaterplassen,+Oslo", paymentDeadline: "2026-09-29", deadlineNote: "入住前 14 天需線上預付，此日前可免費取消" },
-        { date: "10/15 - 10/17 (瑟弗根)", hotel: "The Tide - Rorbuer", address: "Besselvågveien 8A, 8392 Sørvågen", phone: "+47 76 09 21 00", checkIn: "16:00 - 23:00", checkOut: "11:00 前", room: "海景高級小屋", bookingRef: "確認碼: 6311.068.839\nPIN碼: 2677", lat: 67.8893, lon: 13.0207, notes: "入住人數：6位成人。小屋位於港邊，距離接待櫃台約700公尺。", mapQuery: "Besselvågveien+8A,+8392+Sørvågen", webUrl: "https://www.google.com/search?q=The+Tide+-+Rorbuer+Sørvågen" },
-        { date: "10/17 - 10/18 (巴爾斯塔)", hotel: "謝爾斯塔漁人碼頭公寓", address: "Moloveien 41, 8373 Ballstad", phone: "+47 40 46 33 33", checkIn: "15:00 - 21:00", checkOut: "08:00 - 11:00", room: "三臥室房屋", bookingRef: "確認碼: 5967.528.612\nPIN碼: 2370", lat: 68.0722, lon: 13.5511, notes: "入住人數：6位成人。無須預先付款，將於入住期間以 NOK 結帳。", mapQuery: "Moloveien+41,+8373+Ballstad", webUrl: "https://www.solsiden-brygge.no/", paymentDeadline: "2026-10-09", deadlineNote: "前可免費取消 (現場付款)" },
-        { date: "10/19 - 10/21 (特羅姆瑟)", hotel: "Skaret by VANDER", address: "25 Storgata, 9008 Tromsø", phone: "+47 48 60 53 33", checkIn: "15:00 起", checkOut: "11:00 前", room: "海景雙臥室公寓", bookingRef: "確認碼: 6984.388.843\nPIN碼: 0746", lat: 69.6492, lon: 18.9553, notes: "入住人數：6位成人。館內無接待櫃台，入住前14天會收取 NOK 5000 損壞押金。", mapQuery: "Storgata+25,+9008+Tromsø", webUrl: "https://vanderapartments.com/tromso", paymentDeadline: "2026-10-04", deadlineNote: "前可免費取消" },
-        { date: "10/21 - 10/22 (羅瓦涅米)", hotel: "北極城市酒店", address: "Pekankatu 9, Rovaniemi", phone: "請查閱訂房信件確認", checkIn: "15:00 以後", checkOut: "12:00 以前", room: "經典雙人房 * 3間", bookingRef: "訂單編號: ORD0029814012 / 14004\n飯店確認號: 54259329 / 331 / 207", lat: 66.5039, lon: 25.7294, notes: "包含 10/22 早餐。入住名單：LAI YAKO, LEE HSUHSIU, YANG TENGCHUN。", mapQuery: "Pekankatu+9,+Rovaniemi", webUrl: "https://arcticcityhotel.fi/", paymentDeadline: "2026-10-18", deadlineNote: "10/18 已自動扣款 (取消期限 10/21 04:00)" },
-        { date: "10/23 - 10/26 (赫爾辛基)", hotel: "Bob W Helsinki City Centre", address: "Vuorikatu 18 B, 00100 Helsinki", phone: "+358 9 42450197", checkIn: "15:00 起", checkOut: "11:00 前", room: "3 Bedroom - Kitchen - Sauna - Balcony", bookingRef: "確認碼: 6698.147.253\nPIN碼: 3424", lat: 60.1695, lon: 24.9354, notes: "入住人數：6位成人。房價包含附近咖啡廳早餐 (一至五 07:30-10:30，六 07:30-12:00，日 09:00-12:00)。", mapQuery: "Vuorikatu+18+B,+00100+Helsinki", webUrl: "https://bobw.co/", paymentDeadline: "2026-10-19", deadlineNote: "前可免費取消" },
-        { date: "10/26 - 10/27 (慕尼黑)", hotel: "宜必思尚品慕尼黑機場酒店", address: "Nordallee 31, Freising", phone: "請查閱訂房信件確認", checkIn: "15:00 以後", checkOut: "12:00 以前", room: "時尚標準雙床房 * 3間", bookingRef: "訂單編號: ORD0029843565\n飯店確認號: 2610260500", lat: 48.3537, lon: 11.7501, notes: "不含餐食。入住名單：LEE HSUHSIU, YANG TENGCHUN, LAI YAKO。", mapQuery: "Nordallee+31,+Freising", webUrl: "https://all.accor.com/", paymentDeadline: "2026-10-23", deadlineNote: "10/23 已自動扣款 (取消期限 10/26 06:59)" }
+    // 免登入：背景自動匿名驗證（不需 Google 帳號）
+    let authPromise = null;
+    function ensureAuth() {
+        if (currentUser) return Promise.resolve(currentUser);
+        if (!authPromise) {
+            authPromise = auth.signInAnonymously().then(c => (currentUser = c.user)).catch(e => { authPromise = null; throw e; });
+        }
+        return authPromise;
+    }
+    auth.onAuthStateChanged(u => { if (u) currentUser = u; });
+    ensureAuth().catch(() => {});
+
+    // 匯出 / 匯入備份檔（完全不需網路與登入）
+    function exportBackup() {
+        const data = {};
+        for (let i = 0; i < localStorage.length; i++) {
+            const k = localStorage.key(i);
+            if (k.startsWith('trans-')) data[k] = localStorage.getItem(k);
+        }
+        const blob = new Blob([JSON.stringify({ app: 'nordic-transport', exportedAt: new Date().toISOString(), data })], { type: 'application/json' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `北歐交通備份_${new Date().toISOString().slice(0,10)}.json`;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+        const el = document.getElementById('sync-status');
+        el.innerText = "✅ 已匯出備份檔"; el.style.color = "#10B981";
+    }
+
+    function importBackup(ev) {
+        const file = ev.target.files[0]; ev.target.value = '';
+        if (!file) return;
+        const el = document.getElementById('sync-status');
+        const reader = new FileReader();
+        reader.onload = () => {
+            try {
+                const obj = JSON.parse(reader.result);
+                if (!obj || obj.app !== 'nordic-transport' || !obj.data) throw new Error('bad');
+                if (!confirm('匯入會覆蓋本機相同欄位的資料，確定嗎？')) return;
+                Object.entries(obj.data).forEach(([k, v]) => { if (k.startsWith('trans-')) localStorage.setItem(k, v); });
+                el.innerText = "✅ 匯入完成，畫面更新中..."; el.style.color = "#10B981";
+                setTimeout(() => { renderBook(); closeSyncModal(); }, 800);
+            } catch (e) { el.innerText = "❌ 檔案格式不正確"; el.style.color = "#EF4444"; }
+        };
+        reader.readAsText(file);
+    }
+
+    // 🌟 指定要進行雲端同步的行程索引 (Index 從 0 開始)
+    // 3: 羅弗敦群島自駕 | 4: 跨海渡輪 | 5: 郵輪航程 | 7: 芬蘭國鐵
+    const allowedCloudIndices = [3, 4, 5, 7];
+
+    const transports = [
+        {
+            date: "10/12 (一) - 10/13 (二)", type: "✈️ 國際航班 (去程)", route: "台北 (TPE) ➔ 慕尼黑 (MUC)",
+            carrier: "長榮航空 (EVA Air) BR071", bookingRef: "-", departTime: "23:25", departLoc: "桃園國際機場 (TPE) - T2",
+            arriveTime: "07:35 (+1)", arriveLoc: "慕尼黑機場 (MUC) - T2", seats: "-", notes: "飛行總時間約 14h 10m。\n機型/艙等：波音777 商務艙 D"
+        },
+        {
+            date: "10/13 (二)", type: "✈️ 歐洲內陸航班", route: "慕尼黑 (MUC) ➔ 奧斯陸 (OSL)",
+            carrier: "漢莎航空 (Lufthansa) LH 2456", bookingRef: "9JPE6I",
+            departTime: "19:50", departLoc: "慕尼黑機場 (MUC) - T2", arriveTime: "22:05", arriveLoc: "奧斯陸加勒穆恩機場 (OSL)",
+            seats: "Yako Lai / Kueiching Wang : 23A,23B | Hsuhsiu Lee / Hsunyi Wang : 22A,22B | Tengchun Yang / Shu Fang : 21A,21B",
+            notes: "機型/艙等：Airbus A320 經濟艙。\n分組票價：685.54 + 685.54 + 342.46 + 343.49 EUR"
+        },
+        {
+            date: "10/15 (四)", type: "✈️ 挪威國內航班", route: "奧斯陸 (OSL) ➔ 博德 (BOO)",
+            carrier: "北歐航空 (SAS) SK 4106", bookingRef: "-",
+            departTime: "11:45", departLoc: "奧斯陸加勒穆恩機場 (OSL)", arriveTime: "13:10", arriveLoc: "博德機場 (BOO)",
+            seats: "Yako Lai / Kueiching Wang : 5A,5B | Hsuhsiu Lee / Hsunyi Wang : 5E,5F | Tengchun Yang / Shu Fang : 6A,6B",
+            notes: "機型/艙等：- Standard。\n分組票價：179.00 + 172.26 + 86.13 + 87.81 EUR"
+        },
+        {
+            date: "10/15 (四) - 10/18 (日)", type: "🚗 羅弗敦群島自駕", route: "博德 (BOO) ➔ 斯沃爾韋爾 (SVJ)",
+            carrier: "SIXT 租車", bookingRef: "9733067675", departTime: "10/15 14:00 取車", departLoc: "博德機場 (Bodø Airport) SIXT 櫃台",
+            arriveTime: "10/18 17:00 還車", arriveLoc: "斯沃爾韋爾 (Svolvær) Roald Amundsensgate 8",
+            seats: "Toyota ProAce 8人座", notes: "主駕駛：LAI YAKO。\n方案：All Inclusive Protection (含0自付額車體險與竊盜險)。\n甲地租乙地還 (One-Way)。"
+        },
+        {
+            date: "10/15 (四)", type: "⛴️ 跨海渡輪", route: "博德 (Bodø) ➔ 莫斯克內斯 (Moskenes)",
+            carrier: "TORGHATTEN", bookingRef: "CFGKELZY", departTime: "16:45", departLoc: "博德渡輪碼頭 (Bodø ferjekai)",
+            arriveTime: "20:00", arriveLoc: "莫斯克內斯渡輪碼頭 (Moskenes ferjekai)", seats: "成人票 (含座位預訂)",
+            notes: "訂票人：KUEI CHING WANG。\n航線：Bodø-Røst-Værøy-Moskenes。\n⚠️ 提醒：車內所有旅客須在登船前透過線上完成資訊登錄。"
+        },
+        {
+            date: "10/18 (日) - 10/19 (一)", type: "🚢 郵輪航程 (北行)", route: "斯沃爾韋爾 (SVJ) ➔ 特羅姆瑟 (TOS)",
+            carrier: "MS Havila Polaris", bookingRef: "Res# 433405", departTime: "22:15", departLoc: "斯沃爾韋爾碼頭 (Svolvær)",
+            arriveTime: "14:15 (+1)", arriveLoc: "特羅姆瑟碼頭 (Tromsø)", seats: "內側艙房 (Cabin #1, #2, #3)",
+            notes: "已付款。共6位成人分配3間艙房(含單人床及上層鋪位、獨立衛浴)。\n包含 10/19 於 Havrand 餐廳的早餐與午餐。"
+        },
+        {
+            date: "10/21 (三)", type: "✈️ 歐洲內陸航班", route: "特羅姆瑟 (TOS) ➔ 羅瓦涅米 (RVN)",
+            carrier: "芬蘭航空 (Finnair) AY 0542", bookingRef: "9KAWJB", departTime: "10:30", departLoc: "特羅姆瑟機場 (TOS)",
+            arriveTime: "12:50", arriveLoc: "羅瓦涅米機場 (RVN)", seats: "尚未選位（訂位系統未顯示座位號碼）",
+            notes: "機型/艙等：- 經濟艙 N\n分組票價：4,588.00 + 4,616.00 + 2,328.00 + 2,351.00 NOK。\n⚠️ 提醒：尚未選位，記得提早辦理。"
+        },
+        {
+            date: "10/22 (四) - 10/23 (五)", type: "🚆 芬蘭國鐵 VR (北極特快車)", route: "羅瓦涅米 (RVN) ➔ 赫爾辛基 (HEL)",
+            carrier: "VR 火車車次 PYO 266", bookingRef: "TUT-TH5-LEV...", departTime: "17:52", departLoc: "羅瓦涅米火車站",
+            arriveTime: "06:27 (+1)", arriveLoc: "赫爾辛基中央車站", seats: "47 車廂上層 (Coach 47, upstairs)\n臥鋪房號：209/210, 211/212, 213/214",
+            notes: "訂購房型：完整臥鋪艙房 (Whole cabin)。\nJacob & Jassica (209,210), Sissy & Sugar (211,212), Danny & Fang (213,214)。"
+        },
+        {
+            date: "10/26 (一)", type: "✈️ 歐洲內陸航班", route: "赫爾辛基 (HEL) ➔ 慕尼黑 (MUC)",
+            carrier: "漢莎航空 (Lufthansa) LH 2461", bookingRef: "9JPE6I", departTime: "12:45",
+            departLoc: "赫爾辛基萬塔機場 (HEL)", arriveTime: "14:25", arriveLoc: "慕尼黑機場 (MUC) - T2",
+            seats: "Yako Lai / Kueiching Wang : 8A,8B | Hsuhsiu Lee / Hsunyi Wang : 8F,8E | Tengchun Yang / Shu Fang : 9A,9B",
+            notes: "機型/艙等：Airbus A321neo 經濟艙。\n票價已含於去程票價中。"
+        },
+        {
+            date: "10/27 (二) - 10/28 (三)", type: "✈️ 國際航班 (回程)", route: "慕尼黑 (MUC) ➔ 台北 (TPE)",
+            carrier: "長榮航空 (EVA Air) BR072", bookingRef: "-", departTime: "11:30", departLoc: "慕尼黑機場 (MUC) - T2",
+            arriveTime: "06:30 (+1)", arriveLoc: "桃園國際機場 (TPE) - T2", seats: "-", notes: "飛行總時間約 12h 00m。\n機型/艙等：波音777 商務艙 D"
+        }
     ];
 
     let currentPage = 0;
-    const totalPages = stays.length + 1;
-    const container = document.getElementById('accom-book');
+    const totalPages = transports.length + 1;
+    const container = document.getElementById('transport-book');
     let saveTimeout;
+    let countdownInterval;
 
-    let syncError = null;
-    const MAX_DOC_CHARS = 900000; // Firestore 單一文件上限約 1MB
-
-    function updateGlobalSyncTime() {
-        const timeEl = document.getElementById('global-sync-time');
-        if (timeEl && syncError) { timeEl.innerText = syncError; return; }
-        if (timeEl) {
-            const now = new Date();
-            const timeString = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
-            timeEl.innerText = `最後同步時間：${timeString}`;
-        }
+    function debounce(func, wait) {
+        let timeout;
+        return function(...args) { clearTimeout(timeout); timeout = setTimeout(() => func.apply(this, args), wait); };
     }
-
-    async function writeToFirebase(index, field, value) {
-        try {
-            const docRef = doc(db, "Accommodations", `stay_${index}`);
-            await setDoc(docRef, { [field]: value }, { merge: true });
-            showSaveStatus(index);
-            updateGlobalSyncTime(); 
-        } catch (error) {
-            console.error("寫入 Firebase 失敗:", error);
-            syncError = `同步失敗：${error.code || error.message}`;
-            updateGlobalSyncTime();
-        }
+    
+    function saveData(index, field, value) {
+        localStorage.setItem(`trans-${field}-${index}`, value);
+        showSaveStatus(index);
     }
-
-    const saveTimers = {};
-    window.saveData = function(index, field, value) {
-        const key = `${index}-${field}`;
-        clearTimeout(saveTimers[key]);
-        saveTimers[key] = setTimeout(() => writeToFirebase(index, field, value), 800);
-    };
-
-    window.savePayment = function(index) {
-        const status = document.getElementById(`pay-status-${index}`).value;
-        const date = document.getElementById(`pay-date-${index}`).value;
-        const amount = document.getElementById(`pay-amount-${index}`).value;
-        writeToFirebase(index, "payment", { status, date, amount });
-    };
+    const debouncedSaveData = debounce((index, field, value) => { saveData(index, field, value); }, 500);
 
     function showSaveStatus(index) {
         const statusEl = document.getElementById(`save-status-${index}`);
         if (statusEl) {
-            statusEl.innerText = "✓ 雲端已同步";
-            statusEl.style.opacity = 1;
-            clearTimeout(saveTimeout);
-            saveTimeout = setTimeout(() => { statusEl.style.opacity = 0; }, 2000);
+            statusEl.innerText = "✓ 已存至本機"; statusEl.style.opacity = 1;
+            clearTimeout(saveTimeout); saveTimeout = setTimeout(() => { statusEl.style.opacity = 0; }, 2000);
         }
     }
 
-    const DB_NAME = 'TravelManualDB';
-    const STORE_NAME = 'AccomPhotos';
-    
-    function initDB() {
-        return new Promise((resolve, reject) => {
-            const request = indexedDB.open(DB_NAME, 1);
-            request.onupgradeneeded = e => e.target.result.createObjectStore(STORE_NAME);
-            request.onsuccess = () => resolve(request.result);
-            request.onerror = () => reject(request.error);
-        });
-    }
-
-    async function savePhotosToDB(index, photosArr) {
-        try {
-            const db_local = await initDB();
-            const tx = db_local.transaction(STORE_NAME, 'readwrite');
-            tx.objectStore(STORE_NAME).put(photosArr, `photos-${index}`);
-            return new Promise(resolve => tx.oncomplete = resolve);
-        } catch(e) {
-            console.warn("無法寫入本機照片:", e);
+    // 🌟 僅擷取允許同步的行程資料
+    function getTripDataFromLocal() {
+        let data = {};
+        for (let i = 0; i < localStorage.length; i++) { 
+            const key = localStorage.key(i); 
+            if (key.startsWith('trans-')) {
+                const parts = key.split('-');
+                const idx = parseInt(parts[parts.length - 1]);
+                if (allowedCloudIndices.includes(idx)) {
+                    data[key] = localStorage.getItem(key);
+                }
+            } 
         }
+        return data;
     }
 
-    async function getPhotosFromDB(index) {
+    async function uploadToCloud() {
+        const statusEl = document.getElementById('sync-status');
+        statusEl.innerText = "⏳ 正在處理指定行程備份，請稍候..."; statusEl.style.color = "#F59E0B";
+        
         try {
-            const db_local = await initDB();
-            const tx = db_local.transaction(STORE_NAME, 'readonly');
-            const request = tx.objectStore(STORE_NAME).get(`photos-${index}`);
-            return new Promise((resolve, reject) => {
-                request.onsuccess = () => resolve(request.result || []);
-                request.onerror = () => reject(request.error);
+            const uid = (await ensureAuth()).uid;
+            const localData = getTripDataFromLocal();
+            const textData = {}; const photoPromises = [];
+
+            for (const [key, value] of Object.entries(localData)) {
+                if (key.includes('photos-arr')) {
+                    let photos = JSON.parse(value || '[]'); let uploadedPhotos = [];
+                    for (let i = 0; i < photos.length; i++) {
+                        let photo = photos[i];
+                        if (photo.data && photo.data.startsWith('data:')) {
+                            statusEl.innerText = `⏳ 上傳圖檔中...`;
+                            const fileRef = storage.ref(`users/${uid}/photos/${key}_file_${Date.now()}_${i}`);
+                            await fileRef.putString(photo.data, 'data_url');
+                            uploadedPhotos.push({ type: photo.type, data: await fileRef.getDownloadURL() });
+                        } else uploadedPhotos.push(photo);
+                    }
+                    localStorage.setItem(key, JSON.stringify(uploadedPhotos));
+                    photoPromises.push(db.collection("users").doc(uid).collection("photos").doc(key).set({ data: JSON.stringify(uploadedPhotos) }));
+                } else textData[key] = value;
+            }
+            
+            await db.collection("users").doc(uid).set({ textData, lastUpdated: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true });
+            await Promise.all(photoPromises);
+            statusEl.innerText = "✅ 成功備份指定行程至雲端！"; statusEl.style.color = "#10B981";
+        } catch (error) { statusEl.innerText = "❌ 雲端上傳失敗（請確認已在 Firebase 啟用「匿名登入」），或改用匯出備份檔。"; statusEl.style.color = "#EF4444"; }
+    }
+
+    async function downloadFromCloud() {
+        const statusEl = document.getElementById('sync-status');
+        statusEl.innerText = "⏳ 正在下載指定行程資料，請稍候..."; statusEl.style.color = "#3B82F6";
+        
+        try {
+            const uid = (await ensureAuth()).uid;
+            const docRef = await db.collection("users").doc(uid).get();
+            if (docRef.exists) {
+                const cloudData = docRef.data().textData;
+                for (const [key, value] of Object.entries(cloudData)) {
+                    const parts = key.split('-');
+                    const idx = parseInt(parts[parts.length - 1]);
+                    if (allowedCloudIndices.includes(idx)) {
+                        localStorage.setItem(key, value);
+                    }
+                }
+            } else { statusEl.innerText = "⚠️ 您的雲端空間目前沒有備份資料。"; statusEl.style.color = "#F59E0B"; return; }
+
+            const photoSnapshots = await db.collection("users").doc(uid).collection("photos").get();
+            photoSnapshots.forEach(doc => { 
+                const parts = doc.id.split('-');
+                const idx = parseInt(parts[parts.length - 1]);
+                if (allowedCloudIndices.includes(idx)) {
+                    localStorage.setItem(doc.id, doc.data().data);
+                }
             });
-        } catch(e) {
-            throw e; 
+
+            statusEl.innerText = "✅ 下載完成！畫面即將更新..."; statusEl.style.color = "#10B981";
+            setTimeout(() => { renderBook(); closeSyncModal(); }, 1000);
+        } catch (error) { statusEl.innerText = "❌ 雲端下載失敗，請檢查網路，或改用匯入備份檔。"; statusEl.style.color = "#EF4444"; }
+    }
+
+    function openSyncModal() { document.getElementById('sync-modal').style.display = 'flex'; document.getElementById('sync-status').innerText = ''; }
+    function closeSyncModal() { document.getElementById('sync-modal').style.display = 'none'; }
+
+    // 首頁儀表板 Widget 初始化
+    function initDashboardWidget() {
+        const now = new Date();
+        const dateStr = now.toLocaleDateString('zh-TW', { month: 'short', day: 'numeric', weekday: 'long' });
+        document.getElementById('widget-date').innerText = dateStr;
+
+        const departureDate = new Date('2026-10-12T23:25:00+08:00').getTime();
+        clearInterval(countdownInterval);
+        
+        countdownInterval = setInterval(() => {
+            const current = new Date().getTime();
+            const diff = departureDate - current;
+            const el = document.getElementById('widget-countdown');
+            const labelEl = document.getElementById('widget-countdown-label');
+            if (!el || !labelEl) return;
+
+            if (diff > 0) {
+                labelEl.innerText = "✈️ 距離出發 (10/12 23:25) 還有";
+                const d = Math.floor(diff / (1000 * 60 * 60 * 24));
+                const h = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+                const s = Math.floor((diff % (1000 * 60)) / 1000);
+                el.innerText = `${d} 天 ${h} 時 ${m} 分 ${s} 秒`;
+            } else {
+                labelEl.innerText = "🎉 旅途進行中";
+                const passedDiff = Math.abs(diff);
+                const passedDays = Math.floor(passedDiff / (1000 * 60 * 60 * 24)) + 1;
+                el.innerText = `出發第 ${passedDays} 天`;
+            }
+        }, 1000);
+
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                (position) => fetchWeather(position.coords.latitude, position.coords.longitude),
+                (error) => fetchWeather(25.0330, 121.5654)
+            );
+        } else {
+            fetchWeather(25.0330, 121.5654);
         }
+    }
+
+    async function fetchWeather(lat, lon) {
+        try {
+            const geoRes = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=zh-tw`);
+            const geoData = await geoRes.json();
+            const locationEl = document.getElementById('widget-location');
+            if (locationEl) locationEl.innerText = `📍 ${geoData.city || geoData.locality || '未知位置'}`;
+
+            const weatherRes = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true`);
+            const weatherData = await weatherRes.json();
+            const temp = Math.round(weatherData.current_weather.temperature);
+            const code = weatherData.current_weather.weathercode;
+            
+            const wCodeMap = {
+                0: '☀️ 晴朗', 1: '🌤️ 晴時多雲', 2: '⛅ 多雲', 3: '☁️ 陰天',
+                45: '🌫️ 霧', 48: '🌫️ 霧', 51: '🌧️ 毛毛雨', 53: '🌧️ 毛毛雨', 55: '🌧️ 毛毛雨',
+                61: '🌧️ 陣雨', 63: '🌧️ 雨', 65: '🌧️ 大雨', 71: '❄️ 雪', 73: '❄️ 雪', 75: '❄️ 大雪',
+                95: '⛈️ 雷雨'
+            };
+            const wDesc = wCodeMap[code] || '🌤️ 未知氣象';
+            
+            const tempEl = document.getElementById('widget-temp');
+            const descEl = document.getElementById('widget-weather-desc');
+            if (tempEl) tempEl.innerText = `${temp}°C`;
+            if (descEl) descEl.innerText = wDesc;
+
+        } catch (e) {
+            const locationEl = document.getElementById('widget-location');
+            const tempEl = document.getElementById('widget-temp');
+            if (locationEl) locationEl.innerText = "📍 台北市 (預設)";
+            if (tempEl) tempEl.innerText = "--°C";
+        }
+    }
+
+    function simulateFetchFlightData(index, flightNum) {
+        const btn = document.getElementById(`autofill-btn-${index}`);
+        const originalText = btn.innerHTML;
+        btn.innerHTML = '⏳ 聯網抓取中...';
+        btn.disabled = true;
+        
+        setTimeout(() => {
+            const mockTerminal = ["T1", "T2", "T3"][Math.floor(Math.random() * 3)];
+            const mockGate = ["C4", "D7", "A2", "B15", "E3"][Math.floor(Math.random() * 5)];
+            const mockTime = ["22:45", "19:10", "11:05", "09:50"][Math.floor(Math.random() * 4)];
+            
+            const terminalInput = document.getElementById(`terminal-${index}`);
+            const gateInput = document.getElementById(`gate-${index}`);
+            const boardingInput = document.getElementById(`boarding-${index}`);
+            
+            if(terminalInput) terminalInput.value = mockTerminal;
+            if(gateInput) gateInput.value = mockGate;
+            if(boardingInput) boardingInput.value = mockTime;
+            
+            saveData(index, 'terminal', mockTerminal);
+            saveData(index, 'gate', mockGate);
+            saveData(index, 'boarding', mockTime);
+            
+            btn.innerHTML = '✅ 已自動填寫';
+            setTimeout(() => { btn.innerHTML = originalText; btn.disabled = false; }, 3000);
+        }, 1500);
     }
 
     function readFileAsDataURL(file) {
         return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = e => resolve(e.target.result);
-            reader.onerror = reject;
-            reader.readAsDataURL(file);
+            const reader = new FileReader(); reader.onload = e => resolve(e.target.result);
+            reader.onerror = reject; reader.readAsDataURL(file);
         });
     }
 
@@ -384,279 +548,221 @@
         return new Promise((resolve, reject) => {
             const img = new Image();
             img.onload = function() {
-                const canvas = document.createElement('canvas');
-                let width = img.width; let height = img.height;
-                if (width > 800) { height *= 800 / width; width = 800; }
+                const canvas = document.createElement('canvas'); const MAX_WIDTH = 800; 
+                let width = img.width, height = img.height;
+                if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; }
                 canvas.width = width; canvas.height = height;
                 canvas.getContext('2d').drawImage(img, 0, 0, width, height);
-                resolve(canvas.toDataURL('image/jpeg', 0.6));
-            };
-            img.onerror = reject; img.src = dataUrl;
+                resolve(canvas.toDataURL('image/jpeg', 0.6)); 
+            }; img.onerror = reject; img.src = dataUrl;
         });
     }
 
-    window.handlePhotoUpload = async function(event, index) {
-        const files = event.target.files;
-        if (!files || files.length === 0) return;
-        let ok = 0;
-        for (const file of files) {
+    async function handlePhotoUpload(event, index) {
+        const files = event.target.files; if (!files || files.length === 0) return;
+        let savedPhotos = JSON.parse(localStorage.getItem(`trans-photos-arr-${index}`) || '[]');
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i];
             try {
                 const dataUrl = await readFileAsDataURL(file);
-                let item;
-                if (file.type === 'application/pdf') {
-                    if (dataUrl.length > MAX_DOC_CHARS) {
-                        alert(`「${file.name}」超過約 0.9MB，無法雲端同步，請改用照片或截圖。`);
-                        continue;
-                    }
-                    item = { type: 'pdf', data: dataUrl };
-                } else {
-                    item = { type: 'image', data: await compressImage(dataUrl) };
-                }
-                item.createdAt = Date.now() + ok;
-                await setDoc(doc(collection(db, "Accommodations", `stay_${index}`, "photos")), item);
-                ok++;
-            } catch (err) {
-                console.error("上傳失敗:", err);
-                alert("檔案上傳失敗：" + (err.code || err.message));
-            }
+                if (file.type === 'application/pdf') { savedPhotos.push({ type: 'pdf', data: dataUrl }); } 
+                else { savedPhotos.push({ type: 'image', data: await compressImage(dataUrl) }); }
+            } catch (err) { alert("處理檔案時發生錯誤！"); }
         }
-        const statusEl = document.getElementById(`save-status-${index}`);
-        if (statusEl && ok) {
-            statusEl.innerText = `✓ ${ok} 個檔案已上傳雲端`;
-            statusEl.style.opacity = 1;
-            setTimeout(() => { statusEl.style.opacity = 0; }, 2000);
-        }
+        try {
+            localStorage.setItem(`trans-photos-arr-${index}`, JSON.stringify(savedPhotos));
+            renderPhotos(index, savedPhotos); showSaveStatus(index);
+        } catch (err) { alert("手機瀏覽器儲存空間不足，無法儲存所有檔案！"); }
         event.target.value = '';
-    };
+    }
 
-    window.renderPhotos = function(index, photos) {
-        if(!Array.isArray(photos)) return;
+    function renderPhotos(index, photos) {
         const previewContainer = document.getElementById(`photo-preview-container-${index}`);
-        if(!previewContainer) return;
-        previewContainer.innerHTML = ''; 
+        if(!previewContainer) return; previewContainer.innerHTML = ''; 
         photos.forEach((photo, photoIndex) => {
-            const itemDiv = document.createElement('div');
-            itemDiv.className = 'photo-item';
-            const btn = document.createElement('button');
-            btn.className = 'btn-remove-photo'; btn.innerHTML = '✕';
-            btn.onclick = () => window.removePhoto(index, photo.id);
-            itemDiv.appendChild(btn);
-            
-            if (photo.type === 'pdf') {
-                const iframe = document.createElement('iframe');
-                iframe.src = photo.data; itemDiv.appendChild(iframe);
-            } else {
-                const img = document.createElement('img');
-                img.src = photo.data; itemDiv.appendChild(img);
-            }
+            const itemDiv = document.createElement('div'); itemDiv.className = 'photo-item';
+            const btn = document.createElement('button'); btn.className = 'btn-remove-photo'; btn.innerHTML = '✕';
+            btn.onclick = () => removePhoto(index, photoIndex); itemDiv.appendChild(btn);
+            if (photo.type === 'pdf') { const iframe = document.createElement('iframe'); iframe.src = photo.data; itemDiv.appendChild(iframe); } 
+            else { const img = document.createElement('img'); img.src = photo.data; itemDiv.appendChild(img); }
             previewContainer.appendChild(itemDiv);
         });
-    };
-
-    window.removePhoto = async function(index, photoId) {
-        if (!confirm("確定要刪除這份憑證/收據嗎？（所有裝置都會一併刪除）")) return;
-        try {
-            await deleteDoc(doc(db, "Accommodations", `stay_${index}`, "photos", photoId));
-        } catch (e) {
-            alert("刪除失敗：" + (e.code || e.message));
-        }
-    };
-
-    // 把舊版存在「本機 IndexedDB」的照片一次性搬到雲端
-    function getDeviceId() {
-        try {
-            let id = localStorage.getItem('deviceId');
-            if (!id) { id = Math.random().toString(36).slice(2, 8); localStorage.setItem('deviceId', id); }
-            return id;
-        } catch (e) { return 'x' + Math.random().toString(36).slice(2, 6); }
     }
-    async function migrateLocalPhotos() {
-        const dev = getDeviceId();
-        for (let i = 0; i < stays.length; i++) {
-            try {
-                const local = await getPhotosFromDB(i);
-                if (!local || !local.length) continue;
-                let allOk = true;
-                for (let j = 0; j < local.length; j++) {
-                    const p = local[j];
-                    if (!p || !p.data || p.data.length > MAX_DOC_CHARS) { allOk = false; continue; }
-                    await setDoc(doc(db, "Accommodations", `stay_${i}`, "photos", `local_${dev}_${j}`),
-                        { type: p.type, data: p.data, createdAt: j });
-                }
-                if (allOk) await savePhotosToDB(i, []);
-            } catch (e) { console.warn("搬移本機照片失敗:", e); }
+
+    function removePhoto(index, photoIndex) {
+        if(confirm("確定要刪除這份文件嗎？")) {
+            let savedPhotos = JSON.parse(localStorage.getItem(`trans-photos-arr-${index}`) || '[]');
+            savedPhotos.splice(photoIndex, 1);
+            localStorage.setItem(`trans-photos-arr-${index}`, JSON.stringify(savedPhotos));
+            renderPhotos(index, savedPhotos);
         }
     }
 
-    // 即時同步：任何裝置改動，其他裝置馬上更新
-    function applyStayData(index, data) {
-        const setVal = (id, v) => {
-            const el = document.getElementById(id);
-            if (el && typeof v === 'string' && document.activeElement !== el && el.value !== v) el.value = v;
-        };
-        setVal(`ref-${index}`, data.ref);
-        setVal(`room-${index}`, data.room);
-        setVal(`note-${index}`, data.note);
-        if (data.payment) {
-            setVal(`pay-status-${index}`, data.payment.status);
-            setVal(`pay-date-${index}`, data.payment.date);
-            setVal(`pay-amount-${index}`, data.payment.amount);
-        }
-    }
-    function startRealtimeSync() {
-        migrateLocalPhotos();
-        const onErr = (e) => { syncError = `同步失敗：${e.code || e.message}`; updateGlobalSyncTime(); };
-        stays.forEach((_, index) => {
-            onSnapshot(doc(db, "Accommodations", `stay_${index}`), snap => {
-                if (snap.exists()) applyStayData(index, snap.data());
-                if (!snap.metadata.fromCache) { syncError = null; updateGlobalSyncTime(); }
-            }, onErr);
-            onSnapshot(collection(db, "Accommodations", `stay_${index}`, "photos"), snap => {
-                const photos = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-                    .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
-                window.renderPhotos(index, photos);
-            }, onErr);
-        });
-    }
-
-        function getWeatherDesc(code) {
-        if (code === 0) return "☀️ 晴朗無雲";
-        if (code <= 3) return "⛅ 晴時多雲";
-        if (code === 45 || code === 48) return "🌫 起霧";
-        if (code >= 51 && code <= 67) return "🌧 陣雨 / 降雨";
-        if (code >= 71 && code <= 77) return "❄️ 降雪";
-        if (code >= 80 && code <= 82) return "🌦 陣雨";
-        if (code >= 85 && code <= 86) return "🌨 陣雪";
-        if (code >= 95) return "⛈ 雷陣雨";
-        return "🌥 陰天";
-    }
-
-    async function fetchWeather(stayIndex) {
-        const weatherBox = document.getElementById(`weather-${stayIndex}`);
-        if (!weatherBox || weatherBox.dataset.loaded === "true") return;
-
-        const stay = stays[stayIndex];
-        try {
-            const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${stay.lat}&longitude=${stay.lon}&current_weather=true`);
-            const data = await res.json();
-            const temp = data.current_weather.temperature;
-            const code = data.current_weather.weathercode;
+    function renderBook() {
+        let html = '';
+        let summaryListHTML = '';
+        transports.forEach(function(t, index) {
+            // 🌟 在明細表與標題加入雲端圖示標記
+            let cloudIconStr = allowedCloudIndices.includes(index) ? ' <span style="font-size:0.9em;" title="支援雲端同步">☁️</span>' : '';
             
-            weatherBox.innerHTML = `
-                <div><strong>🌡️ 即時氣溫：</strong> ${temp}°C</div>
-                <div><strong>🌤 當前天氣：</strong> ${getWeatherDesc(code)}</div>
-            `;
-            weatherBox.dataset.loaded = "true";
-        } catch (error) {
-            weatherBox.innerHTML = `<div class="weather-loading" style="color:#64748B;">即時天氣無法載入</div>`;
-        }
-    }
+            summaryListHTML += '<div style="margin-bottom: 12px; border-bottom: 1px dashed #E2E8F0; padding-bottom: 12px;">';
+            summaryListHTML += '<div style="font-size:0.85em; color:#0D9488; font-weight:bold; margin-bottom:4px;">' + t.date + ' | ' + t.type + cloudIconStr + '</div>';
+            summaryListHTML += '<div style="font-weight:bold; color:#1E293B;">' + t.route + '</div>';
+            summaryListHTML += '<div style="font-size:0.9em; color:#64748B;">' + t.carrier + '</div>';
+            summaryListHTML += '</div>';
+        });
 
-    async function renderBook() {
-        let html = `
-            <div class="page active" id="page-0">
-                <div class="info-card" id="global-sync-card" style="background: #ECFDF5; border: 1px solid #A7F3D0; display: flex; align-items: center; justify-content: space-between; padding: 12px 16px;">
-                    <div style="display: flex; align-items: center; gap: 12px;">
-                        <div style="background: #10B981; color: white; width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.1em;">
-                            ☁️
-                        </div>
-                        <div>
-                            <div style="font-weight: bold; color: #065F46; font-size: 1.05em;">雲端資料已備份</div>
-                            <div id="global-sync-time" style="font-size: 0.85em; color: #047857; margin-top: 2px;">連線資料庫中...</div>
-                        </div>
+        let dashboardWidgetHTML = `
+            <div class="dashboard-widget">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 15px;">
+                    <div>
+                        <div style="font-size: 0.9em; opacity: 0.9; margin-bottom: 4px;" id="widget-date">日期載入中...</div>
+                        <div style="font-size: 1.1em; font-weight: 700; display: flex; align-items: center; gap: 4px;" id="widget-location">📍 位置載入中...</div>
                     </div>
-                    <div style="width: 10px; height: 10px; background: #10B981; border-radius: 50%; box-shadow: 0 0 8px #10B981; animation: pulse 2s infinite;"></div>
+                    <div style="text-align: right;">
+                        <div style="font-size: 2.2em; font-weight: 700; line-height: 1; margin-bottom: 4px;" id="widget-temp">--°C</div>
+                        <div style="font-size: 0.9em; opacity: 0.9;" id="widget-weather-desc">--</div>
+                    </div>
                 </div>
-
-                <h2 class="hotel-name">🗺️ 北歐跨國住宿與路線總覽</h2>
-                <div class="map-container" style="height: 320px;">
-                    <iframe src="https://maps.google.com/maps?saddr=Oslo,Norway&daddr=Sørvågen,Norway+to:Ballstad,Norway+to:Tromsø,Norway+to:Rovaniemi,Finland+to:Helsinki,Finland+to:Munich,Germany&output=embed" loading="lazy"></iframe>
-                </div>
-
-                <div id="upcoming-deadlines-container"></div>
-
-                <div class="info-card">
-                    <h3 style="margin-top:0; margin-bottom:15px; color:#1E293B; font-size:1.1em;">📅 住宿行程總表</h3>
-                    ${stays.map(s => `
-                        <div class="info-row horizontal">
-                            <span class="info-label" style="min-width: 90px; color:#3B82F6; font-weight:bold;">${s.date.split(' ')[0]}</span>
-                            <span class="info-value-static" style="text-align: left; max-width: 100%;">${s.hotel}</span>
-                        </div>
-                    `).join('')}
+                <div style="background: rgba(255, 255, 255, 0.15); backdrop-filter: blur(5px); padding: 12px; border-radius: 12px; text-align: center;">
+                    <div style="font-size: 0.85em; opacity: 0.9; margin-bottom: 4px;" id="widget-countdown-label">✈️ 距離出發還有</div>
+                    <div style="font-size: 1.3em; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: 1px;" id="widget-countdown">計算中...</div>
                 </div>
             </div>
         `;
 
-        stays.forEach((item, index) => {
+        let todoSectionHTML = `
+            <div class="todo-section">
+                <div class="todo-title">🚨 交通預訂與選位提醒 (尚未辦理)</div>
+                <div class="todo-item">
+                    <b>10/24 (六)</b> 赫爾辛基 ⇄ 塔林跨國渡輪尚未預訂 — 建議儘速選擇 Tallink Silja、Viking Line 或 Eckerö Line 班次，並預留港口報到與通關時間。
+                </div>
+                <div class="todo-item">
+                    <b>10/21 (三)</b> 芬蘭航空 <b>AY0542</b> (特羅姆瑟 ➔ 羅瓦涅米) 尚未選位，記得提早上網劃位。
+                </div>
+            </div>
+        `;
+
+        html += '<div class="page active" id="page-0">' +
+                dashboardWidgetHTML +
+                todoSectionHTML +
+                '<h2 class="route-title" style="margin-top: 25px;">🗺️ 北歐跨國交通總覽</h2>' +
+                '<div class="info-card">' +
+                '<h3 style="margin-top:0; margin-bottom:15px; color:#1E293B; font-size:1.1em;">🚆 行程明細表</h3>' +
+                summaryListHTML +
+                '</div>' +
+                '<div class="notes-section" style="border-left-color: #0D9488; background: #F0FDFA;">' +
+                '<strong>💡 系統功能提示：</strong><br>' +
+                '• <b>備份</b>：右上角「☁️ 備份」免登入，可匯出／匯入備份檔（全部資料），或上傳雲端（僅 ☁️ 指定行程）。<br>' +
+                '• <b>多檔案上傳</b>：點擊上傳按鈕，可「一次選擇多張照片或文件」上傳存檔。<br>' +
+                '• <b>智慧列印</b>：在首頁點擊列印將匯出全本手冊；在各分頁點擊，則僅匯出該段行程。' +
+                '</div>' +
+                '</div>';
+
+        transports.forEach((item, index) => {
             let pageId = index + 1;
+            let icon = '📍', arriveIcon = '📍';
+            if (item.type.includes('✈️')) { icon = '🛫'; arriveIcon = '🛬'; }
+            if (item.type.includes('🚆')) { icon = '🚉'; arriveIcon = '🚉'; }
+            if (item.type.includes('🚢') || item.type.includes('⛴️')) { icon = '⚓'; arriveIcon = '⚓'; }
+            if (item.type.includes('🚗')) { icon = '🚘'; arriveIcon = '🚘'; }
+
+            // 標題旁加入雲端標記
+            let cloudIconBadge = allowedCloudIndices.includes(index) ? ' <span style="margin-left:4px; font-size:1.1em;" title="支援雲端同步">☁️</span>' : '';
+
+            let flightActionGroup = '';
+            let gateBoardingHTML = '';
+
+            if (item.type.includes('✈️')) {
+                let match = item.carrier.match(/[A-Z0-9]{2}\s?\d{2,4}/);
+                let flightNum = match ? match[0].replace(/\s/g, '') : item.carrier;
+                
+                flightActionGroup = `
+                    <div style="display: flex; gap: 10px; margin-bottom: 16px;">
+                        <a href="https://www.google.com/search?q=航班狀態+${flightNum}" target="_blank" class="track-btn" style="flex: 1;">📡 Google 查狀態</a>
+                        <button id="autofill-btn-${index}" class="track-btn btn-auto-fill" onclick="simulateFetchFlightData(${index}, '${flightNum}')" style="flex: 1;">🔄 自動載入(模擬)</button>
+                    </div>
+                `;
+
+                gateBoardingHTML = `
+                    <div class="info-row" style="flex-direction: row; gap: 8px;">
+                        <div style="flex: 1;">
+                            <span class="info-label">✏️ 航站</span>
+                            <input type="text" class="editable-field" style="padding: 10px 5px; text-align: center;" id="terminal-${index}" oninput="debouncedSaveData(${index}, 'terminal', this.value)" placeholder="T2">
+                        </div>
+                        <div style="flex: 1;">
+                            <span class="info-label">✏️ 閘門</span>
+                            <input type="text" class="editable-field" style="padding: 10px 5px; text-align: center;" id="gate-${index}" oninput="debouncedSaveData(${index}, 'gate', this.value)" placeholder="C4">
+                        </div>
+                        <div style="flex: 1.2;">
+                            <span class="info-label">✏️ 登機時間</span>
+                            <input type="text" class="editable-field" style="padding: 10px 5px; text-align: center;" id="boarding-${index}" oninput="debouncedSaveData(${index}, 'boarding', this.value)" placeholder="22:45">
+                        </div>
+                    </div>
+                `;
+            }
+
             html += `
                 <div class="page" id="page-${pageId}">
-                    <div class="type-badge">📍 ${item.date}</div>
-                    <h2 class="hotel-name">${item.hotel}</h2>
-                    <div class="info-card">
-                        <div class="info-row horizontal"><span class="info-label">地址</span><span class="info-value-static">${item.address}</span></div>
-                        <div class="info-row horizontal"><span class="info-label">聯絡電話</span><span class="info-value-static">${item.phone}</span></div>
-                        <div class="info-row horizontal"><span class="info-label">Check-in</span><span class="info-value-static">${item.checkIn}</span></div>
-                        <div class="info-row horizontal" style="border-bottom: none; padding-bottom: 0;"><span class="info-label">Check-out</span><span class="info-value-static">${item.checkOut}</span></div>
+                    <div class="type-badge">${item.type} | ${item.date}${cloudIconBadge}</div>
+                    <h2 class="route-title">${item.route}</h2>
+                    
+                    ${flightActionGroup}
+
+                    <div class="info-card timeline-box">
+                        <div class="time-point">
+                            <div class="time-icon">${icon}</div>
+                            <div class="time-details">
+                                <div class="time-label">出發 (Departure)</div>
+                                <div class="time-value">${item.departTime}</div>
+                                <div class="location-value">${item.departLoc}</div>
+                            </div>
+                        </div>
+                        <div class="time-point">
+                            <div class="time-icon">${arriveIcon}</div>
+                            <div class="time-details">
+                                <div class="time-label">抵達 (Arrival)</div>
+                                <div class="time-value">${item.arriveTime}</div>
+                                <div class="location-value">${item.arriveLoc}</div>
+                            </div>
+                        </div>
                     </div>
 
                     <div class="info-card">
+                        <div class="info-row" style="flex-direction: row; border-bottom: 1px solid #F1F5F9; margin-bottom: 12px;">
+                            <span class="info-label">班次/載具</span>
+                            <span class="info-value-static">${item.carrier}</span>
+                        </div>
+                        
+                        ${gateBoardingHTML}
+
                         <div class="info-row">
-                            <span class="info-label">✏️ 訂單編號 / 確認碼 / PIN碼</span>
-                            <textarea class="editable-field" id="ref-${index}" oninput="saveData(${index}, 'ref', this.value)" placeholder="請輸入訂房確認碼...">${item.bookingRef}</textarea>
+                            <span class="info-label">✏️️ 訂位代號 / 憑證號</span>
+                            <textarea class="editable-field" id="bookRef-${index}" oninput="debouncedSaveData(${index}, 'bookRef', this.value)" placeholder="請輸入訂位代號..."></textarea>
                         </div>
                         <div class="info-row" style="border-bottom: none; padding-bottom: 0;">
-                            <span class="info-label">✏️ 房型 / 床位分配</span>
-                            <textarea class="editable-field" id="room-${index}" oninput="saveData(${index}, 'room', this.value)" placeholder="請輸入房型與床位資訊...">${item.room}</textarea>
-                        </div>
-                    </div>
-                    
-                    <div class="payment-section">
-                        <h3 style="margin: 0 0 15px 0; font-size: 1.05em; color: #0F172A;">💰 付款紀錄</h3>
-                        <div class="payment-row">
-                            <span class="info-label" style="width: 70px;">付款狀態</span>
-                            <select class="payment-input" id="pay-status-${index}" onchange="savePayment(${index})">
-                                <option value="">選擇狀態</option>
-                                <option value="已付款">✅ 已付款</option>
-                                <option value="未付款">⏳ 尚未付款</option>
-                                <option value="現場付">🏨 現場結帳</option>
-                            </select>
-                        </div>
-                        <div class="payment-row">
-                            <span class="info-label" style="width: 70px;">付款日期</span>
-                            <input type="date" class="payment-input" id="pay-date-${index}" onchange="savePayment(${index})">
-                        </div>
-                        <div class="payment-row">
-                            <span class="info-label" style="width: 70px;">付款金額</span>
-                            <input type="text" class="payment-input" id="pay-amount-${index}" oninput="savePayment(${index})" placeholder="如：EUR 150">
+                            <span class="info-label">✏️ 座位 / 艙房分配</span>
+                            <textarea class="editable-field" id="seatAlloc-${index}" oninput="debouncedSaveData(${index}, 'seatAlloc', this.value)" placeholder="請輸入座位資訊..."></textarea>
                         </div>
                     </div>
 
-                    <div class="photo-section">
-                        <h3 style="margin: 0 0 10px 0; font-size: 1.05em; color: #0F172A;">📸 住宿憑證與收據存檔</h3>
-                        <input type="file" id="file-upload-${index}" accept="image/*,application/pdf" multiple style="display:none;" onchange="handlePhotoUpload(event, ${index})">
-                        <button class="btn-camera" onclick="document.getElementById('file-upload-${index}').click()">
-                            ➕ 點此選擇照片、文件或拍照
-                        </button>
-                        <div class="photo-preview-container" id="photo-preview-container-${index}"></div>
+                    <div class="notes-section">
+                        <strong>⚠️ 系統原始備註：</strong><br>${item.notes.replace(/\n/g, '<br>')}
                     </div>
-
-                    <div class="climate-section" id="weather-${index}">
-                        <div class="weather-loading">🔄 正在連線取得即時天氣...</div>
-                    </div>
-
-                    <div class="notes-section"><strong>⚠️ 系統原始備註：</strong><br>${item.notes.replace(/\n/g, '<br>')}</div>
 
                     <div class="user-input-section">
                         <div style="font-weight: 600; color: #64748B; margin-bottom: 8px;">✏️ 個人補充事項</div>
-                        <textarea id="note-${index}" oninput="saveData(${index}, 'note', this.value)" placeholder="點此輸入您的住宿備忘錄..."></textarea>
+                        <textarea id="note-${index}" oninput="debouncedSaveData(${index}, 'note', this.value)" placeholder="點此輸入您的交通備忘錄... (如：行李重量、集合點等)"></textarea>
                         <span class="save-status" id="save-status-${index}"></span>
                     </div>
 
-                    <a href="${item.webUrl}" target="_blank" class="btn-web" rel="noopener noreferrer">🌐 前往飯店網頁 / 搜尋資訊</a>
-
-                    <div class="map-container">
-                        <iframe src="https://maps.google.com/maps?q=${item.mapQuery}&t=&z=14&ie=UTF8&iwloc=&output=embed" loading="lazy"></iframe>
+                    <div class="photo-section">
+                        <h3 style="margin: 0 0 10px 0; font-size: 1.05em; color: #0F172A;">📸 票券與文件存檔 (可選多張)</h3>
+                        <input type="file" id="file-upload-${index}" accept="image/*,application/pdf" multiple style="display:none;" onchange="handlePhotoUpload(event, ${index})">
+                        <button class="btn-camera" onclick="document.getElementById('file-upload-${index}').click()">
+                            ➕ 點此選擇相簿照片、文件或拍照
+                        </button>
+                        <div class="photo-preview-container" id="photo-preview-container-${index}"></div>
                     </div>
                 </div>
             `;
@@ -664,191 +770,69 @@
         
         container.innerHTML = html;
 
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const oneWeekLater = new Date(today);
-        oneWeekLater.setDate(today.getDate() + 7);
-        let upcomingDeadlines = [];
-
-        for (let index = 0; index < stays.length; index++) {
-            let paymentData = { status: "", date: "", amount: "" };
-
-            // 1. 讀取 Firebase 雲端資料
-            try {
-                const docSnap = await getDoc(doc(db, "Accommodations", `stay_${index}`));
-                if (docSnap.exists()) {
-                    const data = docSnap.data();
-                    if(data.ref) document.getElementById(`ref-${index}`).value = data.ref;
-                    if(data.room) document.getElementById(`room-${index}`).value = data.room;
-                    if(data.note) document.getElementById(`note-${index}`).value = data.note;
-                    
-                    if(data.payment) {
-                        paymentData = data.payment;
-                        if(paymentData.status) document.getElementById(`pay-status-${index}`).value = paymentData.status;
-                        if(paymentData.date) document.getElementById(`pay-date-${index}`).value = paymentData.date;
-                        if(paymentData.amount) document.getElementById(`pay-amount-${index}`).value = paymentData.amount;
-                    }
+        transports.forEach((item, index) => {
+            const fields = ['bookRef', 'seatAlloc', 'note', 'terminal', 'gate', 'boarding'];
+            fields.forEach(f => {
+                const val = localStorage.getItem(`trans-${f}-${index}`);
+                const el = document.getElementById(`${f}-${index}`);
+                if (val !== null && el) {
+                    el.value = val;
+                } else if (val === null && el && (f === 'bookRef' || f === 'seatAlloc')) {
+                    el.value = f === 'bookRef' ? item.bookingRef : item.seats;
                 }
-            } catch(e) {
-                console.error("載入 Firebase 資料失敗:", e);
-                syncError = `讀取雲端失敗：${e.code || e.message}`;
-            }
+            });
 
-            const stay = stays[index];
-            if (stay.paymentDeadline) {
-                const [y, m, d] = stay.paymentDeadline.split('-');
-                const deadlineDate = new Date(y, m - 1, d);
+            const savedPhotosArr = JSON.parse(localStorage.getItem(`trans-photos-arr-${index}`) || '[]');
+            if (savedPhotosArr.length > 0) renderPhotos(index, savedPhotosArr);
+        });
 
-                if (today > deadlineDate) {
-                    if (paymentData.status !== "已付款") {
-                        paymentData.status = "已付款";
-                        if (!paymentData.date) paymentData.date = stay.paymentDeadline;
-                        
-                        document.getElementById(`pay-status-${index}`).value = "已付款";
-                        document.getElementById(`pay-date-${index}`).value = paymentData.date;
-                        
-                        writeToFirebase(index, "payment", paymentData);
-                    }
-                } 
-                else if (deadlineDate <= oneWeekLater) {
-                    if (paymentData.status !== "已付款") {
-                        upcomingDeadlines.push({
-                            hotel: stay.hotel,
-                            date: stay.paymentDeadline,
-                            note: stay.deadlineNote
-                        });
-                    }
-                }
-            }
-
-        }
-
-        updateGlobalSyncTime();
-        startRealtimeSync();
-
-        const deadlineContainer = document.getElementById('upcoming-deadlines-container');
-        if (deadlineContainer && upcomingDeadlines.length > 0) {
-            deadlineContainer.innerHTML = `
-                <div class="info-card" style="border-left: 4px solid #F59E0B; background: #FFFBEB;">
-                    <h3 style="margin-top:0; margin-bottom:12px; color:#B45309; font-size:1.1em;">⚠️ 即將到來的付款與取消期限 (7天內)</h3>
-                    ${upcomingDeadlines.map((d, i) => `
-                        <div style="margin-bottom: ${i === upcomingDeadlines.length - 1 ? '0' : '8px'}; font-size: 0.95em; padding-bottom: ${i === upcomingDeadlines.length - 1 ? '0' : '8px'}; border-bottom:${i === upcomingDeadlines.length - 1 ? 'none' : '1px dashed #FCD34D'};">
-                            <strong style="color: #D97706;">${d.date}</strong> - <strong>${d.hotel}</strong><br>
-                            <span style="color: #92400E; font-size: 0.9em;">${d.note}</span>
-                        </div>
-                    `).join('')}
-                </div>
-            `;
-        }
-        
         updateButtons();
+        
+        if (currentPage === 0) {
+            initDashboardWidget();
+        }
     }
 
     function updateButtons() {
         document.getElementById('btn-prev').disabled = currentPage === 0;
         document.getElementById('btn-next').disabled = currentPage === totalPages - 1;
         document.getElementById('page-text').innerText = `${currentPage + 1} / ${totalPages}`;
-        document.getElementById('accom-book').scrollTop = 0; 
-
-        if (currentPage > 0) {
-            fetchWeather(currentPage - 1);
-        }
+        document.getElementById('transport-book').scrollTop = 0; 
     }
 
-    window.nextPage = function() {
+    function nextPage() {
         if (currentPage < totalPages - 1) {
             document.getElementById(`page-${currentPage}`).classList.remove('active');
             currentPage++;
             document.getElementById(`page-${currentPage}`).classList.add('active');
             updateButtons();
+            if (currentPage === 0) initDashboardWidget();
         }
-    };
+    }
 
-    window.prevPage = function() {
+    function prevPage() {
         if (currentPage > 0) {
             document.getElementById(`page-${currentPage}`).classList.remove('active');
             currentPage--;
             document.getElementById(`page-${currentPage}`).classList.add('active');
             updateButtons();
+            if (currentPage === 0) initDashboardWidget();
         }
-    };
+    }
 
-    window.handlePrint = function() {
-        if (currentPage === 0) document.body.classList.add('print-all');
-        else document.body.classList.remove('print-all');
+    let touchStartX = 0; let touchEndX = 0;
+    const appContainer = document.querySelector('.app-container');
+    appContainer.addEventListener('touchstart', e => { touchStartX = e.changedTouches[0].screenX; }, {passive: true});
+    appContainer.addEventListener('touchend', e => { touchEndX = e.changedTouches[0].screenX; handleSwipe(); }, {passive: true});
+    function handleSwipe() { const swipeThreshold = 50; if (touchEndX < touchStartX - swipeThreshold) nextPage(); if (touchEndX > touchStartX + swipeThreshold) prevPage(); }
+
+    function handlePrint() {
+        if (currentPage === 0) { document.body.classList.add('print-all'); } 
+        else { document.body.classList.remove('print-all'); }
         setTimeout(() => { window.print(); }, 100);
-    };
+    }
 
-    // ===== 登入驗證 =====
-    const loginMsg = (t, ok) => { const el = document.getElementById('login-msg'); el.innerText = t; el.className = ok ? 'ok' : ''; };
-    const authErr = (e) => ({
-        'auth/invalid-credential': 'Email 或密碼錯誤',
-        'auth/wrong-password': 'Email 或密碼錯誤',
-        'auth/user-not-found': 'Email 或密碼錯誤',
-        'auth/invalid-email': 'Email 格式不正確',
-        'auth/too-many-requests': '嘗試次數過多，請稍後再試',
-        'auth/network-request-failed': '網路連線失敗',
-        'auth/email-already-in-use': '此 Email 已註冊',
-        'auth/weak-password': '密碼至少需要 6 個字元',
-        'auth/operation-not-allowed': '尚未在 Firebase 啟用 Email/密碼登入'
-    }[e.code] || `錯誤：${e.code || e.message}`);
-
-    window.doLogin = async function(ev) {
-        ev.preventDefault();
-        const btn = document.getElementById('login-btn');
-        btn.disabled = true; loginMsg('登入中...', true);
-        try {
-            await signInWithEmailAndPassword(auth,
-                document.getElementById('login-email').value.trim(),
-                document.getElementById('login-password').value);
-            loginMsg('');
-        } catch (e) { loginMsg(authErr(e)); }
-        btn.disabled = false;
-    };
-    let signingUp = false;
-    window.doSignup = async function() {
-        const email = document.getElementById('login-email').value.trim();
-        const pw = document.getElementById('login-password').value;
-        if (!email || !pw) return loginMsg('請先輸入 Email 與密碼（密碼至少 6 個字元）');
-        signingUp = true; loginMsg('註冊中...', true);
-        try {
-            const cred = await createUserWithEmailAndPassword(auth, email, pw);
-            await sendEmailVerification(cred.user);
-            await signOut(auth);
-            loginMsg('註冊成功！驗證信已寄出，請點信中連結完成驗證後，再回來登入', true);
-        } catch (e) { loginMsg(authErr(e)); }
-        signingUp = false;
-    };
-    window.doResetPassword = async function() {
-        const email = document.getElementById('login-email').value.trim();
-        if (!email) return loginMsg('請先在上方輸入 Email');
-        try { await sendPasswordResetEmail(auth, email); loginMsg('重設密碼信已寄出，請查看信箱', true); }
-        catch (e) { loginMsg(authErr(e)); }
-    };
-    window.doLogout = async function() { await signOut(auth); };
-
-    document.getElementById('signup-btn').style.display = ALLOW_SIGNUP ? 'inline-block' : 'none';
-
-    let appStarted = false;
-    onAuthStateChanged(auth, (user) => {
-        const overlay = document.getElementById('login-overlay');
-        const logoutBtn = document.getElementById('btn-logout');
-        if (signingUp) return;
-        if (user && !user.emailVerified) {
-            sendEmailVerification(user).catch(() => {});
-            signOut(auth).then(() => loginMsg('此 Email 尚未驗證，已重新寄出驗證信，請點信中連結後再登入'));
-            return;
-        }
-        if (user) {
-            overlay.style.display = 'none';
-            logoutBtn.style.display = 'block';
-            if (!appStarted) { appStarted = true; renderBook(); }
-        } else {
-            if (appStarted) { location.reload(); return; }
-            logoutBtn.style.display = 'none';
-            overlay.style.display = 'flex';
-        }
-    });
+    renderBook();
 </script>
 </body>
 </html>
