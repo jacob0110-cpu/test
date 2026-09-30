@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>北歐旅遊全交通手冊 (免登入備份版)</title>
+    <title>北歐旅遊全交通手冊 (局部雲端版)</title>
     
     <!-- 載入 Firebase 核心 SDK -->
     <script src="https://www.gstatic.com/firebasejs/10.5.0/firebase-app-compat.js"></script>
@@ -12,41 +12,16 @@
     <script src="https://www.gstatic.com/firebasejs/10.5.0/firebase-auth-compat.js"></script>
     
     <style>
-        html, body {
-            margin: 0; padding: 0; width: 100%; height: 100%;
-            background-color: #E2E8F0;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-            overflow: hidden;
-        }
-        
-        .app-container {
-            width: 100%; max-width: 600px; height: 100dvh;
-            margin: 0 auto; background-color: #F8FAFC;
-            display: flex; flex-direction: column; position: relative;
-            box-shadow: 0 0 20px rgba(0,0,0,0.05);
-        }
+        html, body { margin: 0; padding: 0; width: 100%; height: 100%; background-color: #E2E8F0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; overflow: hidden; }
+        .app-container { width: 100%; max-width: 600px; height: 100dvh; margin: 0 auto; background-color: #F8FAFC; display: flex; flex-direction: column; position: relative; box-shadow: 0 0 20px rgba(0,0,0,0.05); }
 
-        .header-title {
-            background-color: #0F766E; padding: 16px;
-            padding-top: max(16px, env(safe-area-inset-top));
-            display: flex; justify-content: space-between; align-items: center;
-            color: #FFFFFF; flex-shrink: 0; z-index: 10;
-        }
+        .header-title { background-color: #0F766E; padding: 16px; padding-top: max(16px, env(safe-area-inset-top)); display: flex; justify-content: space-between; align-items: center; color: #FFFFFF; flex-shrink: 0; z-index: 10; }
         .header-title span { font-size: 1.2em; font-weight: 700; }
         
-        /* 雲端同步按鈕 */
-        .btn-sync {
-            background: #0D9488; border: 1px solid #2DD4BF; color: white;
-            padding: 6px 12px; border-radius: 20px; font-size: 0.85em; font-weight: 600;
-            cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            display: flex; align-items: center; gap: 4px;
-        }
+        .btn-sync { background: #0D9488; border: 1px solid #2DD4BF; color: white; padding: 6px 12px; border-radius: 20px; font-size: 0.85em; font-weight: 600; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1); display: flex; align-items: center; gap: 4px; }
         .btn-sync:active { background: #115E59; }
 
-        .content-scroll {
-            flex: 1; overflow-y: auto; position: relative;
-            padding-bottom: 20px; -webkit-overflow-scrolling: touch;
-        }
+        .content-scroll { flex: 1; overflow-y: auto; position: relative; padding-bottom: 20px; -webkit-overflow-scrolling: touch; }
         .content-scroll::-webkit-scrollbar { width: 4px; }
         .content-scroll::-webkit-scrollbar-thumb { background-color: #CBD5E1; border-radius: 4px; }
 
@@ -54,32 +29,18 @@
         .page.active { display: block; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         
-        .type-badge {
-            display: inline-flex; align-items: center; gap: 6px;
-            background-color: #0D9488; color: white; padding: 8px 16px;
-            border-radius: 20px; font-size: 0.9em; font-weight: 600;
-            margin-bottom: 15px; box-shadow: 0 2px 6px rgba(13, 148, 136, 0.3);
-        }
-        
+        .type-badge { display: inline-flex; align-items: center; gap: 6px; background-color: #0D9488; color: white; padding: 8px 16px; border-radius: 20px; font-size: 0.9em; font-weight: 600; margin-bottom: 15px; box-shadow: 0 2px 6px rgba(13, 148, 136, 0.3); }
         .route-title { font-size: 1.4em; color: #0F172A; margin: 0 0 15px 0; line-height: 1.4; display: flex; align-items: center; gap: 10px; }
 
         /* 首頁儀表板 Widget */
-        .dashboard-widget {
-            background: linear-gradient(135deg, #0F766E, #0D9488);
-            color: white; border-radius: 16px; padding: 18px; margin-bottom: 20px;
-            box-shadow: 0 4px 15px rgba(13, 148, 136, 0.3);
-        }
+        .dashboard-widget { background: linear-gradient(135deg, #0F766E, #0D9488); color: white; border-radius: 16px; padding: 18px; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(13, 148, 136, 0.3); }
 
         /* 待辦提醒專區 */
-        .todo-section {
-            background: #FEF2F2; border-radius: 16px; padding: 16px; margin-bottom: 20px;
-            border: 1px solid #FEE2E2; border-left: 4px solid #EF4444; box-shadow: 0 2px 10px rgba(0,0,0,0.03);
-        }
+        .todo-section { background: #FEF2F2; border-radius: 16px; padding: 16px; margin-bottom: 20px; border: 1px solid #FEE2E2; border-left: 4px solid #EF4444; box-shadow: 0 2px 10px rgba(0,0,0,0.03); }
         .todo-title { font-weight: 700; color: #991B1B; margin-bottom: 10px; font-size: 1.05em; display: flex; align-items: center; gap: 6px; }
         .todo-item { font-size: 0.9em; color: #7F1D1D; line-height: 1.6; margin-bottom: 8px; border-bottom: 1px dashed #FCA5A5; padding-bottom: 8px; }
         .todo-item:last-child { margin-bottom: 0; border-bottom: none; padding-bottom: 0; }
 
-        /* 航班追蹤與載入按鈕 */
         .track-btn { display: flex; align-items: center; justify-content: center; gap: 8px; background: #EFF6FF; color: #2563EB; padding: 12px; border-radius: 12px; text-decoration: none; font-weight: 600; font-size: 0.9em; border: 1px solid #BFDBFE; transition: all 0.2s; cursor: pointer; }
         .track-btn:active { background: #DBEAFE; transform: scale(0.98); }
         .btn-auto-fill { background: #F0FDF4; color: #16A34A; border-color: #BBF7D0; }
@@ -158,7 +119,7 @@
 <div class="app-container">
     <div class="header-title">
         <span>🎫 我的交通行程</span>
-        <button class="btn-sync" onclick="openSyncModal()" id="header-auth-btn">☁️ 備份</button>
+        <button class="btn-sync" onclick="openSyncModal()" id="header-auth-btn">👤 尚未登入</button>
     </div>
     
     <div class="content-scroll" id="transport-book"></div>
@@ -173,95 +134,166 @@
     <!-- 個人雲端管理視窗 -->
     <div id="sync-modal">
         <div class="sync-box">
-            <h3 style="margin-top:0; color:#0F172A;">☁️ 行程備份（免登入）</h3>
-            <div id="sync-status" style="font-size: 0.85em; color: #10B981; min-height: 20px; margin-bottom: 6px;"></div>
-
-            <div style="font-size:0.85em; color:#64748B; text-align:left; margin-top:8px;">📁 備份檔（全部資料，含照片，可跨手機）</div>
-            <div class="sync-btn-group" style="margin-top:6px;">
-                <button class="btn-upload" onclick="exportBackup()">匯出備份檔</button>
-                <button class="btn-download" onclick="document.getElementById('import-file').click()">匯入備份檔</button>
+            <h3 style="margin-top:0; color:#0F172A;">☁️ 局部行程雲端備份</h3>
+            
+            <div id="auth-section">
+                <p style="font-size:0.9em; color:#64748B;">登入 Google 帳號，系統僅會針對含有 ☁️ 圖示的指定行程進行備份與同步。</p>
+                <button class="btn-auth sync-btn-group button" onclick="signInWithGoogle()">使用 Google 帳號登入</button>
             </div>
-            <input type="file" id="import-file" accept="application/json,.json" style="display:none;" onchange="importBackup(event)">
 
-            <div style="font-size:0.85em; color:#64748B; text-align:left; margin-top:16px;">☁️ 雲端（僅 ☁️ 指定行程，同一支手機/瀏覽器）</div>
-            <div class="sync-btn-group" style="margin-top:6px;">
-                <button class="btn-upload" onclick="uploadToCloud()">上傳雲端</button>
-                <button class="btn-download" onclick="downloadFromCloud()">下載雲端</button>
+            <div id="user-section" style="display: none;">
+                <div class="user-profile" id="user-profile-info"></div>
+                <div id="sync-status" style="font-size: 0.85em; color: #10B981; min-height: 20px; margin-bottom: 10px;"></div>
+                <div class="sync-btn-group">
+                    <button class="btn-upload" onclick="uploadToCloud()">上傳指定行程</button>
+                    <button class="btn-download" onclick="downloadFromCloud()">下載指定行程</button>
+                </div>
+                <button class="btn-close" style="width: 100%; padding: 12px; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; margin-top: 10px;" onclick="signOut()">登出帳號</button>
             </div>
+            
             <button class="btn-close" style="width: 100%; padding: 12px; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; margin-top: 10px;" onclick="closeSyncModal()">關閉視窗</button>
         </div>
     </div>
 </div>
 
 <script>
-    // === Firebase 設定 ===
+    // === 更新為新專案 aurora-test-55d5d 的 Firebase 設定 ===
     const firebaseConfig = {
-        apiKey: "AIzaSyAjv8C7cVWi8QrpEFIPeBCCxXmgVRgbbXY",
-        authDomain: "aurora-trans-1ae73.firebaseapp.com",
-        projectId: "aurora-trans-1ae73",
-        storageBucket: "aurora-trans-1ae73.firebasestorage.app",
-        messagingSenderId: "499232245127",
-        appId: "1:499232245127:web:cf450c6eb3cb8ec3e57f22",
-        measurementId: "G-25CC1Y5CHX"
+        apiKey: "AIzaSyBzxi1fywgJz_gcuUu6KgzZSOocMx35lYE", 
+        authDomain: "aurora-test-55d5d.firebaseapp.com",
+        projectId: "aurora-test-55d5d",
+        storageBucket: "aurora-test-55d5d.firebasestorage.app",
+        messagingSenderId: "835727692241",
+        appId: "1:835727692241:web:8d1a5acd5191dd22ae10f0"
     };
     
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
     const storage = firebase.storage();
     const auth = firebase.auth();
+    const googleProvider = new firebase.auth.GoogleAuthProvider();
 
     let currentUser = null;
 
-    // 免登入：背景自動匿名驗證（不需 Google 帳號）
-    let authPromise = null;
-    function ensureAuth() {
-        if (currentUser) return Promise.resolve(currentUser);
-        if (!authPromise) {
-            authPromise = auth.signInAnonymously().then(c => (currentUser = c.user)).catch(e => { authPromise = null; throw e; });
-        }
-        return authPromise;
-    }
-    auth.onAuthStateChanged(u => { if (u) currentUser = u; });
-    ensureAuth().catch(() => {});
+    auth.onAuthStateChanged((user) => {
+        currentUser = user;
+        const headerBtn = document.getElementById('header-auth-btn');
+        const authSection = document.getElementById('auth-section');
+        const userSection = document.getElementById('user-section');
+        const profileInfo = document.getElementById('user-profile-info');
 
-    // 匯出 / 匯入備份檔（完全不需網路與登入）
-    function exportBackup() {
-        const data = {};
-        for (let i = 0; i < localStorage.length; i++) {
-            const k = localStorage.key(i);
-            if (k.startsWith('trans-')) data[k] = localStorage.getItem(k);
+        if (user) {
+            headerBtn.innerHTML = `<img src="${user.photoURL}" style="width:18px; height:18px; border-radius:50%;"> 局部同步`;
+            authSection.style.display = 'none';
+            userSection.style.display = 'block';
+            profileInfo.innerHTML = `<img src="${user.photoURL}"> <span>${user.displayName} 的專屬空間</span>`;
+        } else {
+            headerBtn.innerHTML = `👤 尚未登入`;
+            authSection.style.display = 'block';
+            userSection.style.display = 'none';
         }
-        const blob = new Blob([JSON.stringify({ app: 'nordic-transport', exportedAt: new Date().toISOString(), data })], { type: 'application/json' });
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = `北歐交通備份_${new Date().toISOString().slice(0,10)}.json`;
-        document.body.appendChild(a); a.click(); a.remove();
-        setTimeout(() => URL.revokeObjectURL(a.href), 2000);
-        const el = document.getElementById('sync-status');
-        el.innerText = "✅ 已匯出備份檔"; el.style.color = "#10B981";
+    });
+
+    function signInWithGoogle() { 
+        auth.signInWithPopup(googleProvider).catch(err => {
+            if (err.code === 'auth/popup-blocked') {
+                alert("⚠️ 登入視窗被手機阻擋了！\n\n1. 請不要在 LINE 或 FB 內直接開啟，請使用 Safari 或 Chrome 瀏覽器。\n2. 若您已經在使用 Safari，請至手機「設定 > Safari」暫時關閉「阻擋彈出式視窗」。");
+            } else {
+                alert("登入發生錯誤：" + err.message);
+            }
+        });
     }
 
-    function importBackup(ev) {
-        const file = ev.target.files[0]; ev.target.value = '';
-        if (!file) return;
-        const el = document.getElementById('sync-status');
-        const reader = new FileReader();
-        reader.onload = () => {
-            try {
-                const obj = JSON.parse(reader.result);
-                if (!obj || obj.app !== 'nordic-transport' || !obj.data) throw new Error('bad');
-                if (!confirm('匯入會覆蓋本機相同欄位的資料，確定嗎？')) return;
-                Object.entries(obj.data).forEach(([k, v]) => { if (k.startsWith('trans-')) localStorage.setItem(k, v); });
-                el.innerText = "✅ 匯入完成，畫面更新中..."; el.style.color = "#10B981";
-                setTimeout(() => { renderBook(); closeSyncModal(); }, 800);
-            } catch (e) { el.innerText = "❌ 檔案格式不正確"; el.style.color = "#EF4444"; }
-        };
-        reader.readAsText(file);
-    }
+    function signOut() { auth.signOut().then(() => document.getElementById('sync-status').innerText = ''); }
 
     // 🌟 指定要進行雲端同步的行程索引 (Index 從 0 開始)
     // 3: 羅弗敦群島自駕 | 4: 跨海渡輪 | 5: 郵輪航程 | 7: 芬蘭國鐵
     const allowedCloudIndices = [3, 4, 5, 7];
+
+    function openSyncModal() { document.getElementById('sync-modal').style.display = 'flex'; document.getElementById('sync-status').innerText = ''; }
+    function closeSyncModal() { document.getElementById('sync-modal').style.display = 'none'; }
+    
+    function getTripDataFromLocal() {
+        let data = {};
+        for (let i = 0; i < localStorage.length; i++) { 
+            const key = localStorage.key(i); 
+            if (key.startsWith('trans-')) {
+                const parts = key.split('-');
+                const idx = parseInt(parts[parts.length - 1]);
+                if (allowedCloudIndices.includes(idx)) {
+                    data[key] = localStorage.getItem(key);
+                }
+            } 
+        }
+        return data;
+    }
+
+    async function uploadToCloud() {
+        if (!currentUser) return alert("請先登入 Google 帳號！");
+        const uid = currentUser.uid;
+        const statusEl = document.getElementById('sync-status');
+        statusEl.innerText = "⏳ 正在處理指定行程備份，請稍候..."; statusEl.style.color = "#F59E0B";
+        
+        try {
+            const localData = getTripDataFromLocal();
+            const textData = {}; const photoPromises = [];
+
+            for (const [key, value] of Object.entries(localData)) {
+                if (key.includes('photos-arr')) {
+                    let photos = JSON.parse(value || '[]'); let uploadedPhotos = [];
+                    for (let i = 0; i < photos.length; i++) {
+                        let photo = photos[i];
+                        if (photo.data && photo.data.startsWith('data:')) {
+                            statusEl.innerText = `⏳ 上傳圖檔中...`;
+                            const fileRef = storage.ref(`users/${uid}/photos/${key}_file_${Date.now()}_${i}`);
+                            await fileRef.putString(photo.data, 'data_url');
+                            uploadedPhotos.push({ type: photo.type, data: await fileRef.getDownloadURL() });
+                        } else uploadedPhotos.push(photo);
+                    }
+                    localStorage.setItem(key, JSON.stringify(uploadedPhotos));
+                    photoPromises.push(db.collection("users").doc(uid).collection("photos").doc(key).set({ data: JSON.stringify(uploadedPhotos) }));
+                } else textData[key] = value;
+            }
+            
+            await db.collection("users").doc(uid).set({ textData, lastUpdated: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true });
+            await Promise.all(photoPromises);
+            statusEl.innerText = "✅ 成功備份指定行程至雲端！"; statusEl.style.color = "#10B981";
+        } catch (error) { statusEl.innerText = "❌ 上傳失敗，請檢查網路或權限規則。"; statusEl.style.color = "#EF4444"; }
+    }
+
+    async function downloadFromCloud() {
+        if (!currentUser) return alert("請先登入 Google 帳號！");
+        const uid = currentUser.uid;
+        const statusEl = document.getElementById('sync-status');
+        statusEl.innerText = "⏳ 正在下載指定行程資料，請稍候..."; statusEl.style.color = "#3B82F6";
+        
+        try {
+            const docRef = await db.collection("users").doc(uid).get();
+            if (docRef.exists) {
+                const cloudData = docRef.data().textData;
+                for (const [key, value] of Object.entries(cloudData)) {
+                    const parts = key.split('-');
+                    const idx = parseInt(parts[parts.length - 1]);
+                    if (allowedCloudIndices.includes(idx)) {
+                        localStorage.setItem(key, value);
+                    }
+                }
+            } else { statusEl.innerText = "⚠️ 您的雲端空間目前沒有備份資料。"; statusEl.style.color = "#F59E0B"; return; }
+
+            const photoSnapshots = await db.collection("users").doc(uid).collection("photos").get();
+            photoSnapshots.forEach(doc => { 
+                const parts = doc.id.split('-');
+                const idx = parseInt(parts[parts.length - 1]);
+                if (allowedCloudIndices.includes(idx)) {
+                    localStorage.setItem(doc.id, doc.data().data);
+                }
+            });
+
+            statusEl.innerText = "✅ 下載完成！畫面即將更新..."; statusEl.style.color = "#10B981";
+            setTimeout(() => { renderBook(); closeSyncModal(); }, 1000);
+        } catch (error) { statusEl.innerText = "❌ 下載失敗，請檢查網路。"; statusEl.style.color = "#EF4444"; }
+    }
+
 
     const transports = [
         {
@@ -270,7 +302,7 @@
             arriveTime: "07:35 (+1)", arriveLoc: "慕尼黑機場 (MUC) - T2", seats: "-", notes: "飛行總時間約 14h 10m。\n機型/艙等：波音777 商務艙 D"
         },
         {
-            date: "10/13 (二)", type: "✈️ 歐洲內陸航班", route: "慕尼黑 (MUC) ➔ 奧斯陸 (OSL)",
+            date: "10/13 (二)", type: "✈ 歐洲內陸航班", route: "慕尼黑 (MUC) ➔ 奧斯陸 (OSL)",
             carrier: "漢莎航空 (Lufthansa) LH 2456", bookingRef: "9JPE6I",
             departTime: "19:50", departLoc: "慕尼黑機場 (MUC) - T2", arriveTime: "22:05", arriveLoc: "奧斯陸加勒穆恩機場 (OSL)",
             seats: "Yako Lai / Kueiching Wang : 23A,23B | Hsuhsiu Lee / Hsunyi Wang : 22A,22B | Tengchun Yang / Shu Fang : 21A,21B",
@@ -352,90 +384,6 @@
         }
     }
 
-    // 🌟 僅擷取允許同步的行程資料
-    function getTripDataFromLocal() {
-        let data = {};
-        for (let i = 0; i < localStorage.length; i++) { 
-            const key = localStorage.key(i); 
-            if (key.startsWith('trans-')) {
-                const parts = key.split('-');
-                const idx = parseInt(parts[parts.length - 1]);
-                if (allowedCloudIndices.includes(idx)) {
-                    data[key] = localStorage.getItem(key);
-                }
-            } 
-        }
-        return data;
-    }
-
-    async function uploadToCloud() {
-        const statusEl = document.getElementById('sync-status');
-        statusEl.innerText = "⏳ 正在處理指定行程備份，請稍候..."; statusEl.style.color = "#F59E0B";
-        
-        try {
-            const uid = (await ensureAuth()).uid;
-            const localData = getTripDataFromLocal();
-            const textData = {}; const photoPromises = [];
-
-            for (const [key, value] of Object.entries(localData)) {
-                if (key.includes('photos-arr')) {
-                    let photos = JSON.parse(value || '[]'); let uploadedPhotos = [];
-                    for (let i = 0; i < photos.length; i++) {
-                        let photo = photos[i];
-                        if (photo.data && photo.data.startsWith('data:')) {
-                            statusEl.innerText = `⏳ 上傳圖檔中...`;
-                            const fileRef = storage.ref(`users/${uid}/photos/${key}_file_${Date.now()}_${i}`);
-                            await fileRef.putString(photo.data, 'data_url');
-                            uploadedPhotos.push({ type: photo.type, data: await fileRef.getDownloadURL() });
-                        } else uploadedPhotos.push(photo);
-                    }
-                    localStorage.setItem(key, JSON.stringify(uploadedPhotos));
-                    photoPromises.push(db.collection("users").doc(uid).collection("photos").doc(key).set({ data: JSON.stringify(uploadedPhotos) }));
-                } else textData[key] = value;
-            }
-            
-            await db.collection("users").doc(uid).set({ textData, lastUpdated: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true });
-            await Promise.all(photoPromises);
-            statusEl.innerText = "✅ 成功備份指定行程至雲端！"; statusEl.style.color = "#10B981";
-        } catch (error) { statusEl.innerText = "❌ 雲端上傳失敗（請確認已在 Firebase 啟用「匿名登入」），或改用匯出備份檔。"; statusEl.style.color = "#EF4444"; }
-    }
-
-    async function downloadFromCloud() {
-        const statusEl = document.getElementById('sync-status');
-        statusEl.innerText = "⏳ 正在下載指定行程資料，請稍候..."; statusEl.style.color = "#3B82F6";
-        
-        try {
-            const uid = (await ensureAuth()).uid;
-            const docRef = await db.collection("users").doc(uid).get();
-            if (docRef.exists) {
-                const cloudData = docRef.data().textData;
-                for (const [key, value] of Object.entries(cloudData)) {
-                    const parts = key.split('-');
-                    const idx = parseInt(parts[parts.length - 1]);
-                    if (allowedCloudIndices.includes(idx)) {
-                        localStorage.setItem(key, value);
-                    }
-                }
-            } else { statusEl.innerText = "⚠️ 您的雲端空間目前沒有備份資料。"; statusEl.style.color = "#F59E0B"; return; }
-
-            const photoSnapshots = await db.collection("users").doc(uid).collection("photos").get();
-            photoSnapshots.forEach(doc => { 
-                const parts = doc.id.split('-');
-                const idx = parseInt(parts[parts.length - 1]);
-                if (allowedCloudIndices.includes(idx)) {
-                    localStorage.setItem(doc.id, doc.data().data);
-                }
-            });
-
-            statusEl.innerText = "✅ 下載完成！畫面即將更新..."; statusEl.style.color = "#10B981";
-            setTimeout(() => { renderBook(); closeSyncModal(); }, 1000);
-        } catch (error) { statusEl.innerText = "❌ 雲端下載失敗，請檢查網路，或改用匯入備份檔。"; statusEl.style.color = "#EF4444"; }
-    }
-
-    function openSyncModal() { document.getElementById('sync-modal').style.display = 'flex'; document.getElementById('sync-status').innerText = ''; }
-    function closeSyncModal() { document.getElementById('sync-modal').style.display = 'none'; }
-
-    // 首頁儀表板 Widget 初始化
     function initDashboardWidget() {
         const now = new Date();
         const dateStr = now.toLocaleDateString('zh-TW', { month: 'short', day: 'numeric', weekday: 'long' });
@@ -500,7 +448,6 @@
             const descEl = document.getElementById('widget-weather-desc');
             if (tempEl) tempEl.innerText = `${temp}°C`;
             if (descEl) descEl.innerText = wDesc;
-
         } catch (e) {
             const locationEl = document.getElementById('widget-location');
             const tempEl = document.getElementById('widget-temp');
@@ -602,9 +549,7 @@
         let html = '';
         let summaryListHTML = '';
         transports.forEach(function(t, index) {
-            // 🌟 在明細表與標題加入雲端圖示標記
             let cloudIconStr = allowedCloudIndices.includes(index) ? ' <span style="font-size:0.9em;" title="支援雲端同步">☁️</span>' : '';
-            
             summaryListHTML += '<div style="margin-bottom: 12px; border-bottom: 1px dashed #E2E8F0; padding-bottom: 12px;">';
             summaryListHTML += '<div style="font-size:0.85em; color:#0D9488; font-weight:bold; margin-bottom:4px;">' + t.date + ' | ' + t.type + cloudIconStr + '</div>';
             summaryListHTML += '<div style="font-weight:bold; color:#1E293B;">' + t.route + '</div>';
@@ -653,7 +598,7 @@
                 '</div>' +
                 '<div class="notes-section" style="border-left-color: #0D9488; background: #F0FDFA;">' +
                 '<strong>💡 系統功能提示：</strong><br>' +
-                '• <b>備份</b>：右上角「☁️ 備份」免登入，可匯出／匯入備份檔（全部資料），或上傳雲端（僅 ☁️ 指定行程）。<br>' +
+                '• <b>局部雲端備份</b>：右上角登入後，系統僅針對標記有 ☁️ 圖示的行程進行備份交換。<br>' +
                 '• <b>多檔案上傳</b>：點擊上傳按鈕，可「一次選擇多張照片或文件」上傳存檔。<br>' +
                 '• <b>智慧列印</b>：在首頁點擊列印將匯出全本手冊；在各分頁點擊，則僅匯出該段行程。' +
                 '</div>' +
@@ -667,9 +612,7 @@
             if (item.type.includes('🚢') || item.type.includes('⛴️')) { icon = '⚓'; arriveIcon = '⚓'; }
             if (item.type.includes('🚗')) { icon = '🚘'; arriveIcon = '🚘'; }
 
-            // 標題旁加入雲端標記
             let cloudIconBadge = allowedCloudIndices.includes(index) ? ' <span style="margin-left:4px; font-size:1.1em;" title="支援雲端同步">☁️</span>' : '';
-
             let flightActionGroup = '';
             let gateBoardingHTML = '';
 
@@ -737,7 +680,7 @@
                         ${gateBoardingHTML}
 
                         <div class="info-row">
-                            <span class="info-label">✏️️ 訂位代號 / 憑證號</span>
+                            <span class="info-label">✏️ 訂位代號 / 憑證號</span>
                             <textarea class="editable-field" id="bookRef-${index}" oninput="debouncedSaveData(${index}, 'bookRef', this.value)" placeholder="請輸入訂位代號..."></textarea>
                         </div>
                         <div class="info-row" style="border-bottom: none; padding-bottom: 0;">
