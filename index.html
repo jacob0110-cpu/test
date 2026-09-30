@@ -32,10 +32,8 @@
         .type-badge { display: inline-flex; align-items: center; gap: 6px; background-color: #0D9488; color: white; padding: 8px 16px; border-radius: 20px; font-size: 0.9em; font-weight: 600; margin-bottom: 15px; box-shadow: 0 2px 6px rgba(13, 148, 136, 0.3); }
         .route-title { font-size: 1.4em; color: #0F172A; margin: 0 0 15px 0; line-height: 1.4; display: flex; align-items: center; gap: 10px; }
 
-        /* 首頁儀表板 Widget */
         .dashboard-widget { background: linear-gradient(135deg, #0F766E, #0D9488); color: white; border-radius: 16px; padding: 18px; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(13, 148, 136, 0.3); }
 
-        /* 待辦提醒專區 */
         .todo-section { background: #FEF2F2; border-radius: 16px; padding: 16px; margin-bottom: 20px; border: 1px solid #FEE2E2; border-left: 4px solid #EF4444; box-shadow: 0 2px 10px rgba(0,0,0,0.03); }
         .todo-title { font-weight: 700; color: #991B1B; margin-bottom: 10px; font-size: 1.05em; display: flex; align-items: center; gap: 6px; }
         .todo-item { font-size: 0.9em; color: #7F1D1D; line-height: 1.6; margin-bottom: 8px; border-bottom: 1px dashed #FCA5A5; padding-bottom: 8px; }
@@ -93,7 +91,8 @@
         .sync-box { background: white; padding: 24px; border-radius: 16px; width: 85%; max-width: 320px; text-align: center; }
         .user-profile { background: #F1F5F9; padding: 12px; border-radius: 12px; margin: 15px 0; font-size: 0.95em; color: #1E293B; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 8px; }
         .user-profile img { width: 30px; height: 30px; border-radius: 50%; }
-        .btn-auth { background: #DB4437; color: white; margin-top: 15px; width: 100%; padding: 12px; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; }
+        .btn-auth { background: #DB4437; color: white; margin-top: 15px; width: 100%; padding: 12px; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; transition: 0.2s; }
+        .btn-auth:disabled { background: #FCA5A5; cursor: not-allowed; }
         .btn-close { background: #E2E8F0; color: #475569; width: 100%; padding: 12px; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; margin-top: 10px; }
 
         @media print {
@@ -132,13 +131,11 @@
         <div class="sync-box">
             <h3 style="margin-top:0; color:#0F172A;">☁️ 系統設定</h3>
             
-            <!-- 登入前 -->
             <div id="auth-section">
                 <p style="font-size:0.9em; color:#64748B;">登入 Google 帳號，系統將在背景自動為含有 ☁️ 圖示的指定行程進行備份與同步。</p>
-                <button class="btn-auth" onclick="signInWithGoogle()">使用 Google 帳號登入</button>
+                <button class="btn-auth" id="btn-login" onclick="signInWithGoogle()">使用 Google 帳號登入</button>
             </div>
 
-            <!-- 登入後 (取消手動按鈕，改為說明文字) -->
             <div id="user-section" style="display: none;">
                 <div class="user-profile" id="user-profile-info"></div>
                 <p style="font-size: 0.85em; color: #10B981; margin: 15px 0; line-height: 1.5;">✅ 系統已開啟自動同步功能。您編輯的資料會在背景自動上傳，並在開啟網頁時自動抓取最新資料。</p>
@@ -151,7 +148,7 @@
 </div>
 
 <script>
-    // === 更新為自動雲端同步的 Firebase 設定 ===
+    // === Firebase 設定 ===
     const firebaseConfig = {
         apiKey: "AIzaSyBzxi1fywgJz_gcuUu6KgzZSOocMx35lYE",
         authDomain: "aurora-test-55d5d.firebaseapp.com",
@@ -168,18 +165,13 @@
     const googleProvider = new firebase.auth.GoogleAuthProvider();
 
     let currentUser = null;
-
-    // 🌟 指定要進行雲端同步的行程索引 (Index 從 0 開始)
-    // 3: 羅弗敦群島自駕 | 4: 跨海渡輪 | 5: 郵輪航程 | 7: 芬蘭國鐵
     const allowedCloudIndices = [3, 4, 5, 7];
 
-    // 防抖功能
     function debounce(func, wait) {
         let timeout;
         return function(...args) { clearTimeout(timeout); timeout = setTimeout(() => func.apply(this, args), wait); };
     }
 
-    // === 自動上傳邏輯 (防抖 2 秒) ===
     const autoUploadToCloud = debounce(async () => {
         if (!currentUser) return;
         const uid = currentUser.uid;
@@ -216,7 +208,6 @@
         }
     }, 2000); 
 
-    // === 自動下載邏輯 ===
     async function autoDownloadFromCloud() {
         if (!currentUser) return;
         const uid = currentUser.uid;
@@ -237,7 +228,6 @@
                 if (allowedCloudIndices.includes(idx)) localStorage.setItem(doc.id, doc.data().data);
             });
             
-            // 下載完成後重新渲染畫面
             renderBook();
             const headerBtn = document.getElementById('header-auth-btn');
             headerBtn.innerHTML = `<img src="${currentUser.photoURL}" style="width:18px; height:18px; border-radius:50%;"> ☁️ 已同步`;
@@ -248,7 +238,6 @@
         }
     }
 
-    // 監聽登入狀態
     auth.onAuthStateChanged((user) => {
         currentUser = user;
         const headerBtn = document.getElementById('header-auth-btn');
@@ -261,7 +250,6 @@
             userSection.style.display = 'block';
             profileInfo.innerHTML = `<img src="${user.photoURL}"> <span>${user.displayName}</span>`;
             
-            // 登入成功後，立刻觸發自動下載
             headerBtn.innerHTML = `🔄 載入中...`;
             autoDownloadFromCloud();
         } else {
@@ -271,10 +259,25 @@
         }
     });
 
+    // 🌟 加入防連點機制的登入按鈕
     function signInWithGoogle() { 
-        auth.signInWithPopup(googleProvider).catch(err => {
-            if (err.code === 'auth/popup-blocked') {
-                alert("⚠️ 登入視窗被手機阻擋了！\n\n1. 請不要在 LINE 或 FB 內直接開啟，請使用 Safari 或 Chrome 瀏覽器。\n2. 若您已經在使用 Safari，請至手機「設定 > Safari」暫時關閉「阻擋彈出式視窗」。");
+        const loginBtn = document.getElementById('btn-login');
+        loginBtn.disabled = true;
+        loginBtn.innerText = "⏳ 視窗開啟中...";
+
+        auth.signInWithPopup(googleProvider).then(() => {
+            closeSyncModal();
+            loginBtn.disabled = false;
+            loginBtn.innerText = "使用 Google 帳號登入";
+        }).catch(err => {
+            loginBtn.disabled = false;
+            loginBtn.innerText = "使用 Google 帳號登入";
+            
+            // 阻擋兩次點擊產生的錯誤，默默忽略不吵使用者
+            if (err.code === 'auth/cancelled-popup-request') {
+                console.log("使用者關閉了視窗，或因為連點導致衝突。");
+            } else if (err.code === 'auth/popup-blocked') {
+                alert("⚠️ 登入視窗被手機阻擋了！\n\n1. 請務必使用「Safari」瀏覽器開啟此網頁。\n2. 若您已經在使用 Safari，請至手機「設定 > Safari」暫時關閉「阻擋彈出式視窗」。");
             } else {
                 alert("登入發生錯誤：" + err.message);
             }
@@ -303,7 +306,6 @@
 
     let saveTimeout;
 
-    // 🌟 存檔時，如果是指定行程且已登入，觸發自動上傳
     function saveData(index, field, value) {
         localStorage.setItem(`trans-${field}-${index}`, value);
         showSaveStatus(index);
@@ -320,7 +322,6 @@
             clearTimeout(saveTimeout); saveTimeout = setTimeout(() => { statusEl.style.opacity = 0; }, 2000);
         }
     }
-
 
     const transports = [
         {
@@ -512,7 +513,6 @@
         });
     }
 
-    // 🌟 上傳照片時觸發自動雲端上傳
     async function handlePhotoUpload(event, index) {
         const files = event.target.files; if (!files || files.length === 0) return;
         let savedPhotos = JSON.parse(localStorage.getItem(`trans-photos-arr-${index}`) || '[]');
@@ -548,7 +548,6 @@
         });
     }
 
-    // 🌟 刪除照片時也觸發自動雲端更新
     function removePhoto(index, photoIndex) {
         if(confirm("確定要刪除這份文件嗎？")) {
             let savedPhotos = JSON.parse(localStorage.getItem(`trans-photos-arr-${index}`) || '[]');
@@ -700,7 +699,7 @@
                             <textarea class="editable-field" id="bookRef-${index}" oninput="debouncedSaveData(${index}, 'bookRef', this.value)" placeholder="請輸入訂位代號..."></textarea>
                         </div>
                         <div class="info-row" style="border-bottom: none; padding-bottom: 0;">
-                            <span class="info-label">✏️ 座位 / 艙房分配</span>
+                            <span class="info-label">✏️️ 座位 / 艙房分配</span>
                             <textarea class="editable-field" id="seatAlloc-${index}" oninput="debouncedSaveData(${index}, 'seatAlloc', this.value)" placeholder="請輸入座位資訊..."></textarea>
                         </div>
                     </div>
