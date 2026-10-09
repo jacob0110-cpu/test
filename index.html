@@ -178,10 +178,15 @@ dialog img{max-width:94vw;max-height:88vh;border-radius:12px;display:block}
 .fxb{margin-top:8px;font:inherit;font-weight:600;font-size:.9rem;color:var(--brand);background:var(--soft);border:0;border-radius:999px;padding:8px 16px;min-height:40px}
 .mchips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
 .mchip{display:inline-flex;align-items:center;gap:8px;font:inherit;font-weight:600;font-size:.9rem;border:1.5px solid var(--line);background:var(--paper);color:var(--ink);border-radius:999px;padding:8px 14px;min-height:44px;cursor:pointer}
-.mchip i{width:12px;height:12px;border-radius:50%;display:inline-block}
+.mchip i{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;flex:none}
+.mchip i svg,.mk svg,.pp-i svg{width:16px;height:16px;fill:none;stroke:#fff;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.lchip{font:inherit;font-weight:600;font-size:.85rem;border:1.5px solid var(--line);background:var(--paper);color:var(--ink);border-radius:999px;padding:8px 14px;min-height:40px;cursor:pointer}
+.lchip[aria-pressed=true]{background:var(--brand);border-color:var(--brand);color:var(--on-brand)}
+.pp-i{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;vertical-align:middle;margin-right:6px}
+.pp-i svg{width:13px;height:13px}
 .mchip[aria-pressed=false]{opacity:.45}
 #tmap{height:62vh;height:62dvh;min-height:360px;border-radius:14px;border:1px solid var(--line);isolation:isolate;background:var(--soft)}
-.mk{display:grid;place-items:center;width:30px;height:30px;border-radius:50%;color:#fff;font:700 13px/1 system-ui,sans-serif;border:2px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.5)}
+.mk{display:grid;place-items:center;width:32px;height:32px;border-radius:50%;border:2px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.5)}
 .leaflet-popup-content{color:#14252C;font:inherit;font-size:.92rem;line-height:1.55}
 .leaflet-popup-content a{color:#0E6A73;font-weight:700}
 .leaflet-popup-content .pp-s{color:#5D6F77;font-size:.82rem}
@@ -1055,10 +1060,10 @@ svg.leaflet-image-layer.leaflet-interactive path {
     <h2>行程地圖</h2>
     <div class="mchips" id="map-chips"></div>
     <div id="tmap"></div>
+    <div class="mchips" id="map-layers" style="margin:10px 0 0"></div>
     <p class="hint" id="map-status" style="margin:10px 4px"></p>
     <div class="pshare">
       <button type="button" class="fxb" onclick="mapDraw(true)">顯示全部地點</button>
-      <button type="button" class="fxb" onclick="mapBase()" id="map-base">切換為標準地圖</button>
       <button type="button" class="fxb" onclick="mapGeocode(true)">重新定位</button>
     </div>
   </section>
@@ -1893,9 +1898,16 @@ function render(){
 }
 
 // === 行程地圖（Leaflet 地形圖，已內嵌在檔案裡）===
-const MAPT={spots:{label:'景點',ch:'景',color:'#0E6A73'},stays:{label:'住宿',ch:'宿',color:'#C77D0A'},food:{label:'餐廳',ch:'食',color:'#B3402F'}};
+const MAPT={spots:{label:'景點',ic:'pin',color:'#0E6A73'},stays:{label:'住宿',ic:'bed',color:'#C77D0A'},food:{label:'餐廳',ic:'utensils',color:'#B3402F'}};
+const MAPL=[
+  {k:'topo',label:'地形',url:'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',o:{maxZoom:17,subdomains:'abc',attribution:'© OpenStreetMap 貢獻者, SRTM | 樣式 © OpenTopoMap (CC-BY-SA)'}},
+  {k:'street',label:'街道',url:'https://tile.openstreetmap.org/{z}/{x}/{y}.png',o:{maxZoom:19,attribution:'© OpenStreetMap 貢獻者'}},
+  {k:'light',label:'簡潔',url:'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',o:{maxZoom:20,subdomains:'abcd',attribution:'© OpenStreetMap 貢獻者 © CARTO'}},
+  {k:'sat',label:'衛星',url:'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',o:{maxZoom:19,attribution:'圖磚 © Esri, Maxar, Earthstar Geographics'}}
+];
+const mapSym=t=>ic(MAPT[t].ic);
 const mapOn={spots:true,stays:true,food:true};
-let LMAP=null,LTOPO=null,LOSM=null,LGROUP=null,mapTopo=true,geoBusy=false,geoLast=0,tileErr=0;
+let LMAP=null,LBASE=null,LGROUP=null,mapLayer=jget('travel__maplayer','topo'),geoBusy=false,geoLast=0,tileErr=0;
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 function geoQueries(t,i){
   const j=a=>a.filter(Boolean).join(' ');
@@ -1938,7 +1950,7 @@ async function mapGeocode(retry){
 function mapPopup(t,i){
   const q=t==='stays'?[i.name,i.address||i.city].filter(Boolean).join(' '):placeQ(i);
   const sub=t==='stays'?[i.city,i.checkin&&(fmtD(i.checkin)+(i.checkout?' → '+fmtD(i.checkout):''))].filter(Boolean).join('・'):loc(i);
-  return `<b>${esc(i.name)}</b><div class="pp-s">${MAPT[t].label}${sub?'・'+esc(sub):''}</div>`
+  return `<b>${esc(i.name)}</b><div class="pp-s"><span class="pp-i" style="background:${MAPT[t].color}" title="${MAPT[t].label}">${mapSym(t)}</span>${esc(sub)}</div>`
     +(i.geoApprox?'<div class="pp-s">位置為大略位置（找不到精確地址）</div>':'')
     +`<div style="margin-top:6px"><a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}" target="_blank" rel="noopener">用 Google 地圖開啟</a></div>`;
 }
@@ -1949,7 +1961,7 @@ function mapDraw(fit){
     if(!mapOn[t])return;
     Store.get(t).forEach(i=>{
       if(!(i.lat&&i.lng))return;
-      const m=L.marker([i.lat,i.lng],{title:i.name,icon:L.divIcon({className:'',html:`<div class="mk" style="background:${MAPT[t].color}">${MAPT[t].ch}</div>`,iconSize:[30,30],iconAnchor:[15,15],popupAnchor:[0,-16]})});
+      const m=L.marker([i.lat,i.lng],{title:i.name,icon:L.divIcon({className:'',html:`<div class="mk" style="background:${MAPT[t].color}">${mapSym(t)}</div>`,iconSize:[32,32],iconAnchor:[16,16],popupAnchor:[0,-18]})});
       m.bindPopup(mapPopup(t,i),{maxWidth:260});LGROUP.addLayer(m);pts.push([i.lat,i.lng]);
     });
   });
@@ -1957,7 +1969,7 @@ function mapDraw(fit){
   mapStatus();
 }
 function mapChips(){
-  $('map-chips').innerHTML=Object.keys(MAPT).map(t=>`<button type="button" class="mchip" aria-pressed="${mapOn[t]}" onclick="mapToggle('${t}')"><i style="background:${MAPT[t].color}"></i>${MAPT[t].label}（${Store.get(t).length}）</button>`).join('');
+  $('map-chips').innerHTML=Object.keys(MAPT).map(t=>`<button type="button" class="mchip" aria-pressed="${mapOn[t]}" onclick="mapToggle('${t}')" title="${MAPT[t].label}" aria-label="${MAPT[t].label}"><i style="background:${MAPT[t].color}">${mapSym(t)}</i>${Store.get(t).length}</button>`).join('');
 }
 function mapToggle(t){mapOn[t]=!mapOn[t];mapChips();mapDraw(true)}
 function mapStatus(msg){
@@ -1968,19 +1980,23 @@ function mapStatus(msg){
   el.textContent=!total?'還沒有景點、住宿或餐廳。到各分頁新增後，就會標示在這裡。':
     `已標示 ${got} / ${total} 個地點`+(got<total?`，其中 ${total-got} 個找不到位置，可以到該分頁編輯地址或名稱，再按「重新定位」。`:'。點標記可以看詳細資料。')+(tileErr>3?' 地圖圖磚載入失敗，可能沒有網路。':'');
 }
-function mapBase(){
-  mapTopo=!mapTopo;
-  if(mapTopo){LMAP.removeLayer(LOSM);LTOPO.addTo(LMAP)}else{LMAP.removeLayer(LTOPO);LOSM.addTo(LMAP)}
-  $('map-base').textContent=mapTopo?'切換為標準地圖':'切換為地形圖';
+function mapLayers(){
+  $('map-layers').innerHTML=MAPL.map(l=>`<button type="button" class="lchip" aria-pressed="${l.k===mapLayer}" onclick="mapSetLayer('${l.k}')">${l.label}</button>`).join('');
+}
+function mapSetLayer(k){
+  const l=MAPL.find(x=>x.k===k)||MAPL[0];mapLayer=l.k;jset('travel__maplayer',l.k);
+  if(LBASE)LMAP.removeLayer(LBASE);
+  tileErr=0;
+  LBASE=L.tileLayer(l.url,l.o).on('tileerror',()=>{tileErr++;if(tileErr===4)mapStatus()}).addTo(LMAP);
+  LBASE.bringToBack();
+  mapLayers();
 }
 function mapShow(){
   if(!window.L){$('map-status').textContent='地圖元件載入失敗。';return}
   if(!LMAP){
     LMAP=L.map('tmap',{worldCopyJump:true}).setView([62,15],4);
-    LTOPO=L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',{maxZoom:17,subdomains:'abc',attribution:'© OpenStreetMap 貢獻者, SRTM | 樣式 © OpenTopoMap (CC-BY-SA)'}).addTo(LMAP);
-    LOSM=L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap 貢獻者'});
-    [LTOPO,LOSM].forEach(l=>l.on('tileerror',()=>{tileErr++;if(tileErr===4)mapStatus()}));
     LGROUP=L.layerGroup().addTo(LMAP);
+    mapSetLayer(mapLayer);
   }
   mapChips();LMAP.invalidateSize();mapDraw(true);mapGeocode(false);
 }
